@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.1.2"
+local VERSION = "0.1.3"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -33,6 +33,7 @@ local DEFAULTS = {
 	autoRoleCheck       = true,
 	autoFFA             = true,   -- leader sets free-for-all loot when the group changes
 	autoLeaveWithLeader = false,
+	keepZygorShare      = true,   -- followers stay in Zygor guide sharing when a status reply is late
 	debug               = false,
 }
 
@@ -262,22 +263,64 @@ function handlers.PLAYER_LOGIN()
 	else
 		print_(VERSION .. " loaded. No leader set: target the leader and type |cffffff00/hb leader|r")
 	end
-	HB.TraceZygorShare()
+	HB.HookZygorShare()
 end
 
--- Diagnostic: report what turns Zygor guide sharing off, with the calling code.
-function HB.TraceZygorShare()
-	local Sync = ZGV and ZGV.Sync
-	if HB.zygorTraced or type(Sync) ~= "table" or type(Sync.Deactivate) ~= "function" then return end
-	HB.zygorTraced = true
-	hooksecurefunc(Sync, "Deactivate", function()
-		local stack = debugstack and debugstack(2, 6, 0) or ""
-		local lines = {}
-		for line in stack:gmatch("[^\n]+") do
-			local file, ln = line:match("([%w_%-]+%.lua)\"?%]?:(%d+)")
-			if file and not line:find("HaploBox", 1, true) then lines[#lines + 1] = file .. ":" .. ln end
+-- Zygor guide sharing: a follower asks the party for status every 20 s and gives
+-- the sharing leader 2 s to answer. A late or dropped answer makes Zygor think the
+-- leader stopped sharing, and the follower leaves the shared guide. While the team
+-- leader is still in the party and online, ignore that timeout; a real stop
+-- (the leader announces it is no longer sharing) still goes through.
+local function leaderOnlineInParty()
+	if not IsInGroup() then return false end
+	for i = 1, GetNumGroupMembers() - 1 do
+		local unit = "party" .. i
+		if UnitExists(unit) and HB.IsLeaderName(HB.UnitIdent(unit)) then
+			return UnitIsConnected(unit) and true or false
 		end
-		print_("|cffffaa00Zygor guide sharing turned off|r by " .. (#lines > 0 and table.concat(lines, " < ") or "?"))
+	end
+	return false
+end
+
+function HB.HookZygorShare()
+	local Sync = ZGV and ZGV.Sync
+	if HB.zygorHooked or type(Sync) ~= "table" or type(Sync.Deactivate) ~= "function"
+		or type(Sync.DeclarePartyStatusComplete) ~= "function" then return end
+	HB.zygorHooked = true
+
+	local orig = Sync.DeclarePartyStatusComplete
+	Sync.DeclarePartyStatusComplete = function(self, timeout, ...)
+		if HB.db.keepZygorShare and timeout and not HB.IAmLeader()
+			and self.IsSlave and self:IsSlave() and not self.master_present_status
+			and leaderOnlineInParty() then
+			local leaderSaysStopped = false
+			for name, st in pairs(self.PartyStatus or {}) do
+				if type(st) == "table" and HB.IsLeaderName(name) and st.sharemode ~= nil and st.sharemode ~= 1 then
+					leaderSaysStopped = true
+				end
+			end
+			if not leaderSaysStopped then
+				debug("Zygor: leader's status reply was late, staying in the shared guide")
+				if ZGV.CancelTimer and self.complete_party_status_timeout then
+					ZGV:CancelTimer(self.complete_party_status_timeout)
+				end
+				return
+			end
+		end
+		return orig(self, timeout, ...)
+	end
+
+	hooksecurefunc(Sync, "Deactivate", function()
+		local msg = "|cffffaa00Zygor guide sharing turned off|r"
+		if HB.db.debug and debugstack then
+			local lines = {}
+			for line in debugstack(2, 6, 0):gmatch("[^\n]+") do
+				local file, ln = line:match("([%w_%-%.]+%.lua)\"?%]?:(%d+)")
+				if file and not line:find("HaploBox", 1, true) then lines[#lines + 1] = file .. ":" .. ln end
+			end
+			msg = msg .. " by " .. (#lines > 0 and table.concat(lines, " < ") or "?")
+		end
+		print_(msg)
 	end)
 end
 
