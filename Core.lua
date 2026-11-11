@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.1.1"
+local VERSION = "0.1.2"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -262,6 +262,23 @@ function handlers.PLAYER_LOGIN()
 	else
 		print_(VERSION .. " loaded. No leader set: target the leader and type |cffffff00/hb leader|r")
 	end
+	HB.TraceZygorShare()
+end
+
+-- Diagnostic: report what turns Zygor guide sharing off, with the calling code.
+function HB.TraceZygorShare()
+	local Sync = ZGV and ZGV.Sync
+	if HB.zygorTraced or type(Sync) ~= "table" or type(Sync.Deactivate) ~= "function" then return end
+	HB.zygorTraced = true
+	hooksecurefunc(Sync, "Deactivate", function()
+		local stack = debugstack and debugstack(2, 6, 0) or ""
+		local lines = {}
+		for line in stack:gmatch("[^\n]+") do
+			local file, ln = line:match("([%w_%-]+%.lua)\"?%]?:(%d+)")
+			if file and not line:find("HaploBox", 1, true) then lines[#lines + 1] = file .. ":" .. ln end
+		end
+		print_("|cffffaa00Zygor guide sharing turned off|r by " .. (#lines > 0 and table.concat(lines, " < ") or "?"))
+	end)
 end
 
 function handlers.AUTOFOLLOW_BEGIN(name)
