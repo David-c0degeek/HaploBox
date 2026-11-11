@@ -2,7 +2,7 @@
 ## Title: HaploBox
 ## Notes: Multibox team helper: follow alerts on the leader's screen, invites, quest sharing, free-for-all loot, role checks.
 ## Author: Haplo
-## Version: 0.1.0
+## Version: 0.1.1
 ## SavedVariables: HaploBoxDB, HaploBoxTeam
 ## IconTexture: Interface\Icons\Ability_Hunter_BeastCall
 

@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.1.0"
+local VERSION = "0.1.1"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -176,14 +176,32 @@ end
 HB.formatToPattern = formatToPattern
 
 -- ---------------------------------------------------------------- loot
+-- true / false when the client can tell, nil when it cannot read the loot method
+function HB.IsFFA()
+	if C_PartyInfo and C_PartyInfo.GetLootMethod then
+		local ok, m = pcall(C_PartyInfo.GetLootMethod)
+		if ok and m ~= nil then
+			if type(m) == "string" then return m == "freeforall" end
+			if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then return m == Enum.LootMethod.Freeforall end
+		end
+	end
+	if GetLootMethod then
+		local ok, m = pcall(GetLootMethod)
+		if ok and m ~= nil then
+			if type(m) == "string" then return m == "freeforall" end
+			if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then return m == Enum.LootMethod.Freeforall end
+		end
+	end
+	return nil
+end
+
 function HB.SetFFA(quiet)
 	if not IsInGroup() then if not quiet then print_("not in a group") end return end
 	if UnitIsGroupLeader and not UnitIsGroupLeader("player") then
 		if not quiet then print_("only the group leader can change the loot method") end
 		return
 	end
-	local current = GetLootMethod and GetLootMethod()
-	if current == "freeforall" then if not quiet then print_("loot is already free for all") end return end
+	if HB.IsFFA() then if not quiet then print_("loot is already free for all") end return end
 	local tries = {}
 	if C_PartyInfo and C_PartyInfo.SetLootMethod then
 		if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then
@@ -277,8 +295,14 @@ function handlers.PARTY_INVITE_REQUEST(inviter)
 	end)
 end
 
+local ffaGroupSize = 0
 function handlers.GROUP_ROSTER_UPDATE()
-	if HB.db.autoFFA and HB.IAmLeader() and IsInGroup() then
+	-- Only when someone joins: setting the loot method fires GROUP_ROSTER_UPDATE again,
+	-- and every roster update resets other addons' party state (Zygor guide sharing).
+	local size = IsInGroup() and GetNumGroupMembers() or 0
+	local grew = size > ffaGroupSize
+	ffaGroupSize = size
+	if grew and HB.db.autoFFA and HB.IAmLeader() and IsInGroup() and HB.IsFFA() ~= true then
 		C_Timer.After(1, function() HB.SetFFA(true) end)
 	end
 	if HB.db.autoLeaveWithLeader and not HB.IAmLeader() and IsInGroup() and HB.Leader() then
@@ -316,18 +340,48 @@ function handlers.QUEST_ACCEPTED(a, b)
 	local mode = HB.db.autoShareQuests
 	if mode == "off" or (mode == "leader" and not HB.IAmLeader()) or not IsInGroup() then return end
 	if questID and questID == suppressShareQuest and GetTime() < suppressUntil then return end
-	C_Timer.After(0.5, function() HB.ShareQuest(a, questID) end)
+	debug("QUEST_ACCEPTED " .. tostring(a) .. " " .. tostring(b) .. ", sharing")
+	C_Timer.After(0.5, function() HB.ShareQuest(b and a or nil, questID, true) end)
 end
 
-function HB.ShareQuest(index, questID)
-	if C_QuestLog and C_QuestLog.IsPushableQuest and questID then
-		if C_QuestLog.IsPushableQuest(questID) then
-			C_QuestLog.SetSelectedQuest(questID)
-			QuestLogPushQuest()
-		end
-	elseif index and SelectQuestLogEntry then
+local function questTitle(questID, index)
+	if questID and C_QuestLog and C_QuestLog.GetTitleForQuestID then
+		local ok, t = pcall(C_QuestLog.GetTitleForQuestID, questID)
+		if ok and t then return t end
+	end
+	if index and GetQuestLogTitle then
+		local t = GetQuestLogTitle(index)
+		if t then return t end
+	end
+	return "quest " .. tostring(questID or index)
+end
+
+-- Share one quest with the party. Tries the modern API, then the log-index API.
+-- retry: try once more a second later (the quest log can lag behind QUEST_ACCEPTED).
+function HB.ShareQuest(index, questID, retry)
+	if not IsInGroup() then return end
+	if questID and not index and C_QuestLog and C_QuestLog.GetLogIndexForQuestID then
+		local ok, i = pcall(C_QuestLog.GetLogIndexForQuestID, questID)
+		if ok and i and i > 0 then index = i end
+	end
+	local pushed = false
+	if questID and C_QuestLog and C_QuestLog.IsPushableQuest and C_QuestLog.IsPushableQuest(questID) then
+		if C_QuestLog.SetSelectedQuest then C_QuestLog.SetSelectedQuest(questID) end
+		QuestLogPushQuest()
+		pushed = true
+	elseif index and SelectQuestLogEntry and GetQuestLogPushable then
 		SelectQuestLogEntry(index)
-		if GetQuestLogPushable() then QuestLogPushQuest(index) end
+		if GetQuestLogPushable() then
+			QuestLogPushQuest(index)
+			pushed = true
+		end
+	end
+	if pushed then
+		print_("shared: " .. questTitle(questID, index))
+	elseif retry then
+		C_Timer.After(1, function() HB.ShareQuest(index, questID, false) end)
+	else
+		print_("|cffffaa00not shareable:|r " .. questTitle(questID, index))
 	end
 end
 
