@@ -11,7 +11,6 @@ local TOGGLES = {
 	{ "autoFFA", "Leader: set free-for-all loot when the group changes" },
 	{ "autoRoleCheck", "Answer group finder role checks with my team role" },
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
-	{ "keepZygorShare", "Follower: stay in the leader's Zygor guide sharing when a status reply is late" },
 }
 
 local SOUNDS = {
