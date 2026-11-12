@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.5.1"
+local VERSION = "0.6.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -226,6 +226,87 @@ function HB.SetFFA(quiet)
 		end
 	end
 	print_("could not change the loot method on this client")
+end
+
+-- ---------------------------------------------------------------- team sync
+-- /hb team (on the leader, grouped): the current group becomes the team, in group
+-- order, with the leader first. It is sent as M|<leader>|<name>=<role>;... and every
+-- toon that receives it from that leader stores it. /hb role sends R|<role>|<name>.
+local function clean(n) return (str(n) or ""):gsub("[|;=]", "") end
+
+local function setRole(name, role)
+	HaploBoxTeam.roles = HaploBoxTeam.roles or {}
+	local key = HB.Norm(name)
+	for n in pairs(HaploBoxTeam.roles) do
+		if HB.Norm(n) == key then HaploBoxTeam.roles[n] = nil end
+	end
+	HaploBoxTeam.roles[name] = role
+end
+
+local function refreshTeam()
+	if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
+	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
+end
+
+local function applyTeam(leader, list)
+	HaploBoxTeam.leader = leader
+	HaploBoxTeam.order = {}
+	HaploBoxTeam.roles = {}
+	for _, m in ipairs(list) do
+		HaploBoxTeam.order[#HaploBoxTeam.order + 1] = m.name
+		HaploBoxTeam.roles[m.name] = m.role
+	end
+	refreshTeam()
+end
+
+function HB.TeamSummary()
+	local parts = {}
+	for _, n in ipairs(HaploBoxTeam.order or {}) do
+		local r = HB.RoleOf(n) or "?"
+		parts[#parts + 1] = n .. " (" .. (HB.IsLeaderName(n) and "leader, " or "") .. r .. ")"
+	end
+	return #parts > 0 and table.concat(parts, ", ") or "no team set"
+end
+
+function HB.SetTeamFromGroup()
+	if not IsInGroup() or IsInRaid() then print_("join a party (not a raid) with your team first") return end
+	local me = clean(HB.UnitIdent("player"))
+	local units = { "player", "party1", "party2", "party3", "party4" }
+	local list, wire = {}, {}
+	for _, u in ipairs(units) do
+		if UnitExists(u) then
+			local name = clean(HB.UnitIdent(u))
+			if name ~= "" then
+				local role = HB.RoleOf(name) or (u == "player" and "tank" or "dps")
+				list[#list + 1] = { name = name, role = role }
+				wire[#wire + 1] = name .. "=" .. role
+			end
+		end
+	end
+	applyTeam(me, list)
+	send("M|" .. me .. "|" .. table.concat(wire, ";"))
+	print_("team set and sent: " .. HB.TeamSummary())
+end
+
+local function onTeamMessage(sender, leader, body)
+	-- only the leader named in the message may send it
+	if HB.Norm(sender) ~= HB.Norm(leader) then return end
+	local list = {}
+	for entry in (body or ""):gmatch("[^;]+") do
+		local name, role = entry:match("^(.-)=(%a+)$")
+		if name and name ~= "" then list[#list + 1] = { name = name, role = role } end
+	end
+	if #list == 0 then return end
+	applyTeam(leader, list)
+	print_("team set by |cffffff00" .. shortName(leader) .. "|r: " .. HB.TeamSummary())
+end
+
+local function onRoleMessage(sender, role, name)
+	if HB.Norm(sender) ~= HB.Norm(name) then return end
+	if role ~= "tank" and role ~= "healer" and role ~= "dps" then return end
+	setRole(name, role)
+	refreshTeam()
+	debug(name .. " is now " .. role)
 end
 
 -- ---------------------------------------------------------------- events
@@ -490,6 +571,8 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 		send(focusMsg())
 		return
 	end
+	if kind == "M" then onTeamMessage(sender, code, arg) return end
+	if kind == "R" then onRoleMessage(sender, code, arg) return end
 	if kind == "T" then
 		setFocus(sender, code ~= "" and code or nil)
 		return
@@ -547,7 +630,9 @@ local function help()
 	print_("commands:")
 	print_("  /hb status - leader, role and settings")
 	print_("  /hb leader [name] - set the leader (no name: your target)")
-	print_("  /hb role tank|healer|dps - your role for group finder role checks")
+	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
+	print_("  /hb team show - list the team")
+	print_("  /hb role tank|healer|dps - your role (healer: follow arrows, role checks); sent to the group")
 	print_("  /hb ffa - set free-for-all loot (group leader only)")
 	print_("  /hb share - share every quest in your log with the group")
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept mountOn mountOff")
@@ -571,9 +656,14 @@ SlashCmdList.HAPLOBOX = function(input)
 	elseif cmd == "role" then
 		local r = rest:lower()
 		if r ~= "tank" and r ~= "healer" and r ~= "dps" then print_("role must be tank, healer or dps") return end
-		HaploBoxTeam.roles = HaploBoxTeam.roles or {}
-		HaploBoxTeam.roles[HB.UnitIdent("player")] = r
-		print_("role set to " .. r)
+		local me = clean(HB.UnitIdent("player"))
+		setRole(me, r)
+		send("R|" .. r .. "|" .. me)
+		refreshTeam()
+		print_("role set to " .. r .. (IsInGroup() and " (sent to the group)" or ""))
+	elseif cmd == "team" then
+		if rest:lower() == "show" then print_("team: " .. HB.TeamSummary()) return end
+		HB.SetTeamFromGroup()
 	elseif cmd == "ffa" then
 		HB.SetFFA(false)
 	elseif cmd == "share" then
