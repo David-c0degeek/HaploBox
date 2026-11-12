@@ -16,6 +16,8 @@ local C = {
 	power    = { 0.30, 0.55, 0.95 },
 	powerBg  = { 0.12, 0.14, 0.20, 0.90 },
 	ok       = { 0.17, 0.33, 0.20, 0.95 },
+	lead     = { 0.36, 0.30, 0.10, 0.95 },
+	paused   = { 0.55, 0.38, 0.08, 0.95 },
 	broken   = { 0.55, 0.16, 0.14, 0.95 },
 	unknown  = { 0.25, 0.25, 0.28, 0.95 },
 }
@@ -210,16 +212,36 @@ local function createRow(i)
 	return r
 end
 
-local function setBox(r, kind)
+local function setBox(r, c, icon, label)
 	local b = r.box
-	local c, icon, label
-	if kind == "leader" then c, icon, label = C.ok, "crown", "LEADER"
-	elseif kind == "S" then c, icon, label = C.ok, "link", "FOLLOW"
-	elseif kind == "X" then c, icon, label = C.broken, "link-broken", "BROKEN"
-	else c, icon, label = C.unknown, nil, kind == "away" and "AWAY" or "?" end
 	b.bg:SetColorTexture(c[1], c[2], c[3], c[4])
 	if icon then b.icon:SetTexture(MEDIA .. icon) b.icon:Show() else b.icon:Hide() end
 	b.label:SetText(label)
+end
+
+-- Walks the follow chain from a toon: true when it ends at the leader (or at
+-- someone outside the team we know nothing about), false when a toon on the way
+-- has stopped following. Following the healer while the healer stopped = paused.
+local function chainMoving(target)
+	local seen = {}
+	for _ = 1, 10 do
+		local k = HB.Norm(target)
+		if not k or seen[k] then return true end
+		seen[k] = true
+		if HB.IsLeaderName(target) then return true end
+		local st = HB.followState[k]
+		if st == "X" then return false end
+		if st ~= "S" then return true end
+		target = HB.followTarget[k]
+		if not target then return true end
+	end
+	return true
+end
+
+local function shortLabel(name)
+	local n = displayName(name or "?")
+	if #n > 9 then n = n:sub(1, 9) end
+	return "> " .. n:upper()
 end
 
 -- ---------------------------------------------------------------- updates
@@ -263,9 +285,22 @@ local function updatePower(r)
 end
 
 local function updateStatus(r)
-	if HB.IsLeaderName(r.name) then setBox(r, "leader") return end
-	if not r.unit then setBox(r, "away") return end
-	setBox(r, HB.followState and HB.followState[HB.Norm(r.name)])
+	if HB.IsLeaderName(r.name) then setBox(r, C.lead, "crown", "LEADER") return end
+	if not r.unit then setBox(r, C.unknown, nil, "AWAY") return end
+	local k = HB.Norm(r.name)
+	local st, target = HB.followState[k], HB.followTarget[k]
+	if st == "X" then setBox(r, C.broken, "link-broken", "BROKEN") return end
+	if st ~= "S" then setBox(r, C.unknown, nil, "?") return end
+	if not target then setBox(r, C.ok, "link", "FOLLOW") return end   -- old version: no target
+	local icon, label
+	if HB.IsLeaderName(target) then icon, label = "crown", "> LEAD"
+	elseif HB.RoleOf(target) == "healer" then icon, label = "cross", "> HEAL"
+	else icon, label = "link", shortLabel(target) end
+	if chainMoving(target) then
+		setBox(r, C.ok, icon, label)
+	else
+		setBox(r, C.paused, "pause", label)
+	end
 end
 
 local function updateRange(r)

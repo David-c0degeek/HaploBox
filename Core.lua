@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.3.0"
+local VERSION = "0.4.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -121,14 +121,15 @@ function HB.IsLeaderName(name)
 end
 function HB.IAmLeader() return HB.IsLeaderName(HB.UnitIdent("player")) end
 
-function HB.MyRole()
+function HB.RoleOf(name)
 	local roles = HaploBoxTeam and HaploBoxTeam.roles
-	if not roles then return nil end
-	local me = HB.Norm(HB.UnitIdent("player"))
-	for name, role in pairs(roles) do
-		if HB.Norm(name) == me then return role end
+	local key = HB.Norm(name)
+	if not roles or not key then return nil end
+	for n, role in pairs(roles) do
+		if HB.Norm(n) == key then return role end
 	end
 end
+function HB.MyRole() return HB.RoleOf(HB.UnitIdent("player")) end
 
 function HB.PlaySound(key)
 	local v = HB.db.sounds[key]
@@ -237,23 +238,32 @@ local errorThrottle = {}
 
 local handlers = {}
 
--- Follow state of every team member: "S" following, "X" not following.
--- Followers broadcast changes to the group, so every toon knows every state.
-HB.followState = {}
-local function setFollowState(name, state)
+-- Follow state of every team member: "S" following, "X" not following, plus who
+-- they follow. Messages: F|S|<target> and F|X on a change, F|? asks everyone,
+-- F|s|<target> / F|x answer it (lowercase never triggers the leader alert).
+HB.followState, HB.followTarget = {}, {}
+local myFollowTarget
+local function setFollowState(name, state, target)
 	local k = HB.Norm(name)
-	if not k or HB.followState[k] == state then return end
-	HB.followState[k] = state
+	if not k then return end
+	target = state == "S" and str(target) or nil
+	if HB.followState[k] == state and HB.followTarget[k] == target then return end
+	HB.followState[k], HB.followTarget[k] = state, target
 	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
 end
-local function myFollowState() return lastFollowAction == "BEGIN" and "S" or "X" end
+local function myFollowMsg(lower)
+	local code = lastFollowAction == "BEGIN" and "S" or "X"
+	if lower then code = code:lower() end
+	if lastFollowAction == "BEGIN" and myFollowTarget then return "F|" .. code .. "|" .. myFollowTarget end
+	return "F|" .. code
+end
 
 local lastQuery = 0
 local function queryFollowStates()
 	if not IsInGroup() or GetTime() - lastQuery < 3 then return end
 	lastQuery = GetTime()
 	send("F|?")
-	if not HB.IAmLeader() then send("F|" .. myFollowState():lower()) end
+	if not HB.IAmLeader() then send(myFollowMsg(true)) end
 end
 
 function handlers.ADDON_LOADED(name)
@@ -295,11 +305,14 @@ end
 
 function handlers.AUTOFOLLOW_BEGIN(name)
 	followEndPending = nil
-	if lastFollowAction == "BEGIN" then return end
-	lastFollowAction = "BEGIN"
-	setFollowState(HB.UnitIdent("player"), "S")
-	HB.PlaySound("followOn")
-	send("F|S")
+	name = str(name)
+	-- a refresh of the same follow is not news; a switch to another target is
+	if lastFollowAction == "BEGIN" and HB.Norm(name) == HB.Norm(myFollowTarget) then return end
+	local wasFollowing = lastFollowAction == "BEGIN"
+	lastFollowAction, myFollowTarget = "BEGIN", name
+	setFollowState(HB.UnitIdent("player"), "S", name)
+	if not wasFollowing then HB.PlaySound("followOn") end
+	send(myFollowMsg(false))
 end
 
 function handlers.AUTOFOLLOW_END()
@@ -309,7 +322,7 @@ function handlers.AUTOFOLLOW_END()
 	C_Timer.After(0.3, function()
 		if followEndPending ~= token then return end
 		followEndPending = nil
-		lastFollowAction = "END"
+		lastFollowAction, myFollowTarget = "END", nil
 		setFollowState(HB.UnitIdent("player"), "X")
 		HB.PlaySound("followOff")
 		send("F|X")
@@ -448,16 +461,16 @@ end
 function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	if prefix ~= PREFIX or secret(msg) or secret(sender) then return end
 	if HB.Norm(sender) == HB.Norm(HB.UnitIdent("player")) then return end
-	local kind, code = strsplit("|", msg)
+	local kind, code, arg = strsplit("|", msg)
 	if kind == "F" and code == "?" then
-		if not HB.IAmLeader() then send("F|" .. myFollowState():lower()) end
+		if not HB.IAmLeader() then send(myFollowMsg(true)) end
 		return
 	end
 	if kind == "F" and (code == "s" or code == "x") then  -- state report, not a change: no alert
-		setFollowState(sender, code:upper())
+		setFollowState(sender, code:upper(), arg)
 		return
 	end
-	if kind == "F" and (code == "S" or code == "X") then setFollowState(sender, code) end
+	if kind == "F" and (code == "S" or code == "X") then setFollowState(sender, code, arg) end
 	if kind == "F" and HB.IAmLeader() then
 		if code == "X" then
 			HB.PlaySound("leaderAlert")
