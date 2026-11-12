@@ -247,9 +247,9 @@ end
 
 -- ---------------------------------------------------------------- layout (out of combat only)
 local function wanted()
-	local mode = HB.db.partyFrame
-	if mode == "off" then return false end
-	if mode == "leader" and not HB.IAmLeader() then return false end
+	local mode = HB.db.teamFrame
+	if mode == "hide" then return false end
+	if mode ~= "show" and not HB.IAmLeader() then return false end  -- "auto": leader only
 	if not IsInGroup() and not HB.db.partyFrameSolo then return false end
 	return #HB.TeamOrder() > 0
 end

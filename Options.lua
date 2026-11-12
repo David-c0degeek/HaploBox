@@ -24,7 +24,7 @@ local SOUNDS = {
 }
 
 local SHARE_MODES = { "leader", "all", "off" }
-local FRAME_MODES = { "all", "leader", "off" }
+local FRAME_MODES = { "auto", "show", "hide" }
 
 function HB.CreateOptions()
 	local panel = CreateFrame("Frame")
@@ -76,22 +76,22 @@ function HB.CreateOptions()
 	-- team frame mode
 	local frameLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 	frameLabel:SetPoint("TOPLEFT", 20, y - 6)
-	frameLabel:SetText("Team frame (health, power, follow):")
+	frameLabel:SetText("Team frame on this toon:")
 	local frameBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 	frameBtn:SetSize(90, 22)
 	frameBtn:SetPoint("LEFT", frameLabel, "RIGHT", 10, 0)
-	local function showFrameMode() frameBtn:SetText(HB.db.partyFrame) end
+	local function showFrameMode() frameBtn:SetText(HB.db.teamFrame) end
 	frameBtn:SetScript("OnClick", function()
-		local cur = HB.db.partyFrame
+		local cur = HB.db.teamFrame
 		for i, m in ipairs(FRAME_MODES) do
-			if m == cur then HB.db.partyFrame = FRAME_MODES[i % #FRAME_MODES + 1] break end
+			if m == cur then HB.db.teamFrame = FRAME_MODES[i % #FRAME_MODES + 1] break end
 		end
 		showFrameMode()
 		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	end)
 	local frameHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	frameHint:SetPoint("LEFT", frameBtn, "RIGHT", 10, 0)
-	frameHint:SetText("shift-drag to move, /hb frame for scale")
+	frameHint:SetText("auto = leader only. Shift-drag moves it.")
 	refreshers[#refreshers + 1] = showFrameMode
 	y = y - 40
 

@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.2.0"
+local VERSION = "0.2.1"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -33,7 +33,7 @@ local DEFAULTS = {
 	autoRoleCheck       = true,
 	autoFFA             = true,   -- leader sets free-for-all loot when the group changes
 	autoLeaveWithLeader = false,
-	partyFrame          = "all",  -- team frame: "all" toons, "leader" only, or "off"
+	teamFrame           = "auto", -- team frame on this toon: "auto" (only if it is the leader), "show" or "hide"
 	partyFrameSolo      = false,  -- also show it when not in a group
 	partyScale          = 1,
 	debug               = false,
@@ -509,7 +509,7 @@ local function help()
 	print_("  /hb share - share every quest in your log with the group")
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
-	print_("  /hb frame all|leader|off - team frame on every toon, the leader only, or off")
+	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame scale <0.5-2> | solo | reset - size, show when solo, reset position (shift-drag moves it)")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
@@ -570,9 +570,11 @@ SlashCmdList.HAPLOBOX = function(input)
 		end
 	elseif cmd == "frame" then
 		local a, b = rest:lower():match("^(%S*)%s*(.-)$")
-		if a == "all" or a == "leader" or a == "off" then
-			HB.db.partyFrame = a
-			print_("team frame: " .. a)
+		local alias = { on = "show", off = "hide", all = "show", leader = "auto" }
+		a = alias[a] or a
+		if a == "auto" or a == "show" or a == "hide" then
+			HB.db.teamFrame = a
+			print_("team frame on this toon: " .. a)
 		elseif a == "scale" and tonumber(b) then
 			HB.db.partyScale = math.min(2, math.max(0.5, tonumber(b)))
 			print_("team frame scale: " .. HB.db.partyScale)
@@ -582,8 +584,8 @@ SlashCmdList.HAPLOBOX = function(input)
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
-			print_("team frame: " .. tostring(HB.db.partyFrame) .. ", scale " .. tostring(HB.db.partyScale)
-				.. ". Use /hb frame all|leader|off|scale <n>|solo|reset")
+			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
+				.. ". Use /hb frame auto|show|hide|scale <n>|solo|reset")
 			return
 		end
 		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
