@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.4.0"
+local VERSION = "0.5.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -258,12 +258,35 @@ local function myFollowMsg(lower)
 	return "F|" .. code
 end
 
+-- Focus of every team member: T|<name> when it changes, T| when cleared.
+-- Answered together with the follow state on F|?.
+HB.focus = {}
+local function setFocus(name, target)
+	local k = HB.Norm(name)
+	if not k then return end
+	target = str(target)
+	if HB.focus[k] == target then return end
+	HB.focus[k] = target
+	if HB.OnFocusChanged then HB.OnFocusChanged() end
+end
+local function myFocusName()
+	local n = str(UnitExists("focus") and HB.UnitIdent("focus") or nil)
+	return n and n:gsub("|", "") or nil
+end
+local function focusMsg() return "T|" .. (myFocusName() or "") end
+
+function handlers.PLAYER_FOCUS_CHANGED()
+	setFocus(HB.UnitIdent("player"), myFocusName())
+	send(focusMsg())
+end
+
 local lastQuery = 0
 local function queryFollowStates()
 	if not IsInGroup() or GetTime() - lastQuery < 3 then return end
 	lastQuery = GetTime()
 	send("F|?")
 	if not HB.IAmLeader() then send(myFollowMsg(true)) end
+	send(focusMsg())
 end
 
 function handlers.ADDON_LOADED(name)
@@ -464,6 +487,11 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	local kind, code, arg = strsplit("|", msg)
 	if kind == "F" and code == "?" then
 		if not HB.IAmLeader() then send(myFollowMsg(true)) end
+		send(focusMsg())
+		return
+	end
+	if kind == "T" then
+		setFocus(sender, code ~= "" and code or nil)
 		return
 	end
 	if kind == "F" and (code == "s" or code == "x") then  -- state report, not a change: no alert

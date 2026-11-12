@@ -163,8 +163,8 @@ local function sizeRow(r)
 	local W, H = rowW(), rowH()
 	r:SetSize(W + GAP + BOX_W, H)
 	r.bg:SetSize(W, H)
-	r.pctText:ClearAllPoints()
-	r.pctText:SetPoint("TOPRIGHT", r, "TOPLEFT", W - 6, -5)
+	r.focusText:SetWidth(math.floor(W * 0.45))
+	r.nameText:SetWidth(math.floor(W * 0.45))
 	local barH = math.max(6, H - 25)
 	r.health:SetSize(W - 12, barH)
 	r.power:SetSize(W - 12, math.max(3, math.floor(barH / 3)))
@@ -189,11 +189,26 @@ local function createRow(i)
 	r.nameText:SetPoint("TOPLEFT", 6, -4)
 	r.nameText:SetJustifyH("LEFT")
 
-	r.pctText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	r.pctText:SetJustifyH("RIGHT")
+	-- focus: crosshair + name, top right of the bar area
+	r.focusText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	r.focusText:SetJustifyH("RIGHT")
+	r.focusText:SetWordWrap(false)
+	r.focusText:SetTextColor(1, 0.82, 0.3)
+	r.focusIcon = r:CreateTexture(nil, "OVERLAY")
+	r.focusIcon:SetSize(11, 11)
+	r.focusIcon:SetTexture(MEDIA .. "focus")
+	r.focusIcon:SetVertexColor(1, 0.82, 0.3)
 
 	r.health = bar(r, C.health, C.healthBg)
 	r.health:SetPoint("TOPLEFT", 6, -19)
+	r.focusText:SetPoint("BOTTOMRIGHT", r.health, "TOPRIGHT", 0, 3)
+	r.focusIcon:SetPoint("RIGHT", r.focusText, "LEFT", -3, 0)
+
+	-- health percent sits inside the health bar, right side
+	r.pctText = r.health:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	r.pctText:SetPoint("RIGHT", r.health, "RIGHT", -3, 0)
+	r.pctText:SetJustifyH("RIGHT")
+	r.pctText:SetShadowOffset(1, -1)
 
 	r.power = bar(r, C.power, C.powerBg)
 	r.power:SetPoint("TOPLEFT", r.health, "BOTTOMLEFT", 0, -3)
@@ -318,12 +333,22 @@ local function updateRange(r)
 	end
 end
 
+local function updateFocus(r)
+	local f = HB.focus and HB.focus[HB.Norm(r.name)]
+	r.focusText:SetText(f and displayName(f) or "|cff777777-|r")
+	r.focusIcon:SetAlpha(f and 1 or 0.35)
+end
+
 local function updateRow(r)
-	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateRange(r)
+	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateRange(r)
 end
 
 function HB.RefreshPartyFrame()
 	for _, r in ipairs(rows) do if r:IsShown() then updateRow(r) end end
+end
+
+function HB.OnFocusChanged()
+	for _, r in ipairs(rows) do if r:IsShown() then updateFocus(r) end end
 end
 
 function HB.OnFollowStateChanged()
