@@ -56,6 +56,13 @@ function HB.TeamOrder()
 	for n in pairs(team.roles or {}) do extra[#extra + 1] = n end
 	table.sort(extra)
 	for _, n in ipairs(extra) do add(n) end
+	-- group members who are not in the team list (a swapped-in toon) still get a row
+	if IsInGroup() and not IsInRaid() then
+		add(HB.UnitIdent("player"))
+		for i = 1, 4 do
+			if UnitExists("party" .. i) then add(HB.UnitIdent("party" .. i)) end
+		end
+	end
 	return out
 end
 
@@ -163,7 +170,7 @@ local function sizeRow(r)
 	local W, H = rowW(), rowH()
 	r:SetSize(W + GAP + BOX_W, H)
 	r.bg:SetSize(W, H)
-	r.focusText:SetWidth(math.floor(W * 0.45))
+	r.focusMaxW = math.floor(W * 0.45)
 	r.nameText:SetWidth(math.floor(W * 0.45))
 	local barH = math.max(6, H - 25)
 	r.health:SetSize(W - 12, barH)
@@ -335,7 +342,12 @@ end
 
 local function updateFocus(r)
 	local f = HB.focus and HB.focus[HB.Norm(r.name)]
+	-- size the text to its content so the crosshair sits right before the name
+	r.focusText:SetWidth(0)
 	r.focusText:SetText(f and displayName(f) or "|cff777777-|r")
+	local w = r.focusText.GetUnboundedStringWidth and r.focusText:GetUnboundedStringWidth() or r.focusText:GetStringWidth()
+	if type(w) ~= "number" or secret(w) then w = r.focusMaxW or 100 end
+	r.focusText:SetWidth(math.min(math.ceil(w) + 2, r.focusMaxW or 100))
 	r.focusIcon:SetAlpha(f and 1 or 0.35)
 end
 
