@@ -24,6 +24,7 @@ local SOUNDS = {
 }
 
 local SHARE_MODES = { "leader", "all", "off" }
+local FRAME_MODES = { "all", "leader", "off" }
 
 function HB.CreateOptions()
 	local panel = CreateFrame("Frame")
@@ -70,6 +71,28 @@ function HB.CreateOptions()
 		showShare()
 	end)
 	refreshers[#refreshers + 1] = showShare
+	y = y - 30
+
+	-- team frame mode
+	local frameLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	frameLabel:SetPoint("TOPLEFT", 20, y - 6)
+	frameLabel:SetText("Team frame (health, power, follow):")
+	local frameBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	frameBtn:SetSize(90, 22)
+	frameBtn:SetPoint("LEFT", frameLabel, "RIGHT", 10, 0)
+	local function showFrameMode() frameBtn:SetText(HB.db.partyFrame) end
+	frameBtn:SetScript("OnClick", function()
+		local cur = HB.db.partyFrame
+		for i, m in ipairs(FRAME_MODES) do
+			if m == cur then HB.db.partyFrame = FRAME_MODES[i % #FRAME_MODES + 1] break end
+		end
+		showFrameMode()
+		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
+	end)
+	local frameHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	frameHint:SetPoint("LEFT", frameBtn, "RIGHT", 10, 0)
+	frameHint:SetText("shift-drag to move, /hb frame for scale")
+	refreshers[#refreshers + 1] = showFrameMode
 	y = y - 40
 
 	for _, s in ipairs(SOUNDS) do

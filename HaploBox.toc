@@ -1,10 +1,11 @@
 ## Interface: 16001, 11508, 120105
 ## Title: HaploBox
-## Notes: Multibox team helper: follow alerts on the leader's screen, invites, quest sharing, free-for-all loot, role checks.
+## Notes: Multibox team helper: team frame with follow status, follow alerts on the leader's screen, invites, quest sharing, free-for-all loot, role checks.
 ## Author: Haplo
-## Version: 0.1.4
+## Version: 0.2.0
 ## SavedVariables: HaploBoxDB, HaploBoxTeam
 ## IconTexture: Interface\Icons\Ability_Hunter_BeastCall
 
 Core.lua
+Party.lua
 Options.lua

@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.1.4"
+local VERSION = "0.2.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -33,6 +33,9 @@ local DEFAULTS = {
 	autoRoleCheck       = true,
 	autoFFA             = true,   -- leader sets free-for-all loot when the group changes
 	autoLeaveWithLeader = false,
+	partyFrame          = "all",  -- team frame: "all" toons, "leader" only, or "off"
+	partyFrameSolo      = false,  -- also show it when not in a group
+	partyScale          = 1,
 	debug               = false,
 }
 
@@ -79,6 +82,7 @@ end
 
 local function print_(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff33ccffHaploBox|r " .. msg) end
 local function debug(msg) if HB.db and HB.db.debug then print_("|cff888888" .. msg .. "|r") end end
+HB.print, HB.debug, HB.secret = print_, debug, secret
 
 local myRealm = str(GetRealmName and GetRealmName())
 myRealm = myRealm and myRealm:gsub("%s", "") or nil
@@ -231,6 +235,25 @@ local errorThrottle = {}
 
 local handlers = {}
 
+-- Follow state of every team member: "S" following, "X" not following.
+-- Followers broadcast changes to the group, so every toon knows every state.
+HB.followState = {}
+local function setFollowState(name, state)
+	local k = HB.Norm(name)
+	if not k or HB.followState[k] == state then return end
+	HB.followState[k] = state
+	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
+end
+local function myFollowState() return lastFollowAction == "BEGIN" and "S" or "X" end
+
+local lastQuery = 0
+local function queryFollowStates()
+	if not IsInGroup() or GetTime() - lastQuery < 3 then return end
+	lastQuery = GetTime()
+	send("F|?")
+	if not HB.IAmLeader() then send("F|" .. myFollowState():lower()) end
+end
+
 function handlers.ADDON_LOADED(name)
 	if name ~= ADDON then return end
 	HaploBoxDB = HaploBoxDB or {}
@@ -255,6 +278,10 @@ function handlers.ADDON_LOADED(name)
 	if HB.CreateOptions then HB.CreateOptions() end
 end
 
+function handlers.PLAYER_ENTERING_WORLD()
+	C_Timer.After(3, queryFollowStates)
+end
+
 function handlers.PLAYER_LOGIN()
 	local leader = HB.Leader()
 	if leader then
@@ -268,6 +295,7 @@ function handlers.AUTOFOLLOW_BEGIN(name)
 	followEndPending = nil
 	if lastFollowAction == "BEGIN" then return end
 	lastFollowAction = "BEGIN"
+	setFollowState(HB.UnitIdent("player"), "S")
 	HB.PlaySound("followOn")
 	send("F|S")
 end
@@ -280,6 +308,7 @@ function handlers.AUTOFOLLOW_END()
 		if followEndPending ~= token then return end
 		followEndPending = nil
 		lastFollowAction = "END"
+		setFollowState(HB.UnitIdent("player"), "X")
 		HB.PlaySound("followOff")
 		send("F|X")
 	end)
@@ -302,6 +331,7 @@ function handlers.GROUP_ROSTER_UPDATE()
 	local size = IsInGroup() and GetNumGroupMembers() or 0
 	local grew = size > ffaGroupSize
 	ffaGroupSize = size
+	if grew then C_Timer.After(2, queryFollowStates) end
 	if grew and HB.db.autoFFA and HB.IAmLeader() and IsInGroup() and HB.IsFFA() ~= true then
 		C_Timer.After(1, function() HB.SetFFA(true) end)
 	end
@@ -417,6 +447,15 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	if prefix ~= PREFIX or secret(msg) or secret(sender) then return end
 	if HB.Norm(sender) == HB.Norm(HB.UnitIdent("player")) then return end
 	local kind, code = strsplit("|", msg)
+	if kind == "F" and code == "?" then
+		if not HB.IAmLeader() then send("F|" .. myFollowState():lower()) end
+		return
+	end
+	if kind == "F" and (code == "s" or code == "x") then  -- state report, not a change: no alert
+		setFollowState(sender, code:upper())
+		return
+	end
+	if kind == "F" and (code == "S" or code == "X") then setFollowState(sender, code) end
 	if kind == "F" and HB.IAmLeader() then
 		if code == "X" then
 			HB.PlaySound("leaderAlert")
@@ -470,6 +509,8 @@ local function help()
 	print_("  /hb share - share every quest in your log with the group")
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
+	print_("  /hb frame all|leader|off - team frame on every toon, the leader only, or off")
+	print_("  /hb frame scale <0.5-2> | solo | reset - size, show when solo, reset position (shift-drag moves it)")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
 end
@@ -527,6 +568,25 @@ SlashCmdList.HAPLOBOX = function(input)
 		else
 			print_("test what? alert or a sound event")
 		end
+	elseif cmd == "frame" then
+		local a, b = rest:lower():match("^(%S*)%s*(.-)$")
+		if a == "all" or a == "leader" or a == "off" then
+			HB.db.partyFrame = a
+			print_("team frame: " .. a)
+		elseif a == "scale" and tonumber(b) then
+			HB.db.partyScale = math.min(2, math.max(0.5, tonumber(b)))
+			print_("team frame scale: " .. HB.db.partyScale)
+		elseif a == "solo" then
+			HB.db.partyFrameSolo = not HB.db.partyFrameSolo
+			print_("team frame when solo: " .. (HB.db.partyFrameSolo and "shown" or "hidden"))
+		elseif a == "reset" then
+			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
+		else
+			print_("team frame: " .. tostring(HB.db.partyFrame) .. ", scale " .. tostring(HB.db.partyScale)
+				.. ". Use /hb frame all|leader|off|scale <n>|solo|reset")
+			return
+		end
+		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	elseif cmd == "who" then
 		print_("you: " .. tostring(HB.UnitIdent("player")) .. "  target: " .. tostring(HB.UnitIdent("target"))
 			.. "  realm: " .. tostring(myRealm))
