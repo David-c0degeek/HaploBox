@@ -5,7 +5,7 @@
 -- FontStrings, never into Lua arithmetic or comparisons.
 local HB = HaploBox
 
-local ROW_H, ROW_W, BOX_W, GAP = 38, 250, 56, 3
+local BOX_W, GAP = 56, 3  -- row width and height are settings (teamW, teamRowH)
 local MEDIA = "Interface\\AddOns\\HaploBox\\Media\\"
 
 local C = {
@@ -94,6 +94,45 @@ local function displayName(name)
 	return (name:gsub("%-.*$", ""))
 end
 
+-- ---------------------------------------------------------------- sizes
+local MIN_W, MAX_W, MIN_H, MAX_H = 150, 500, 28, 70
+local function rowW() return math.min(MAX_W, math.max(MIN_W, HB.db.teamW or 250)) end
+local function rowH() return math.min(MAX_H, math.max(MIN_H, HB.db.teamRowH or 38)) end
+
+-- ---------------------------------------------------------------- class colours
+local function classFileFor(r)
+	local key = HB.Norm(r.name)
+	HB.db.classCache = HB.db.classCache or {}
+	if r.unit then
+		local ok, _, file = pcall(UnitClass, r.unit)
+		if ok and type(file) == "string" and not secret(file) then HB.db.classCache[key] = file return file end
+	end
+	return HB.db.classCache[key]
+end
+
+local function classColor(file)
+	if not file then return nil end
+	if C_ClassColor and C_ClassColor.GetClassColor then
+		local c = C_ClassColor.GetClassColor(file)
+		if c then return c.r, c.g, c.b end
+	end
+	local c = (CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS or {})[file]
+	if c then return c.r, c.g, c.b end
+end
+
+local function updateColors(r)
+	local cr, cg, cb
+	if HB.db.teamClassColors then cr, cg, cb = classColor(classFileFor(r)) end
+	if not cr then cr, cg, cb = C.health[1], C.health[2], C.health[3] end
+	r.health:SetStatusBarColor(cr, cg, cb)
+	r.health.back:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.9)
+	if HB.db.teamClassColors then
+		r.nameText:SetTextColor(math.min(1, cr * 1.1 + 0.08), math.min(1, cg * 1.1 + 0.08), math.min(1, cb * 1.1 + 0.08))
+	else
+		r.nameText:SetTextColor(C.name[1], C.name[2], C.name[3])
+	end
+end
+
 -- ---------------------------------------------------------------- rows
 local function solid(parent, layer, c)
 	local t = parent:CreateTexture(nil, layer)
@@ -101,53 +140,63 @@ local function solid(parent, layer, c)
 	return t
 end
 
-local function bar(parent, fg, bg, h)
+local function bar(parent, fg, bg)
 	local b = CreateFrame("StatusBar", nil, parent)
 	b:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
 	b:SetStatusBarColor(fg[1], fg[2], fg[3])
-	b:SetHeight(h)
 	b:SetMinMaxValues(0, 1)
 	b:SetValue(0)
-	local back = solid(b, "BACKGROUND", bg)
-	back:SetAllPoints()
+	b.back = solid(b, "BACKGROUND", bg)
+	b.back:SetAllPoints()
 	return b
+end
+
+local function startMove()
+	if HB.db.teamLocked or InCombatLockdown() or not container then return end
+	container:StartMoving()
+end
+
+-- Sizes and anchors that depend on the row size. Out of combat only (rows are secure).
+local function sizeRow(r)
+	local W, H = rowW(), rowH()
+	r:SetSize(W + GAP + BOX_W, H)
+	r.bg:SetSize(W, H)
+	r.pctText:ClearAllPoints()
+	r.pctText:SetPoint("TOPRIGHT", r, "TOPLEFT", W - 6, -5)
+	local barH = math.max(6, H - 25)
+	r.health:SetSize(W - 12, barH)
+	r.power:SetSize(W - 12, math.max(3, math.floor(barH / 3)))
+	r.box:ClearAllPoints()
+	r.box:SetPoint("TOPLEFT", r, "TOPLEFT", W + GAP, 0)
+	r.box:SetSize(BOX_W, H)
+	r.box.label:SetShown(H >= 32)
 end
 
 local function createRow(i)
 	local r = CreateFrame("Button", "HaploBoxPartyRow" .. i, container, "SecureUnitButtonTemplate")
-	r:SetSize(ROW_W + GAP + BOX_W, ROW_H)
 	r:RegisterForClicks("AnyUp")
 	r:SetAttribute("type1", "target")
 	r:RegisterForDrag("LeftButton")
-	r:SetScript("OnDragStart", function()
-		if IsShiftKeyDown() and not InCombatLockdown() then container:StartMoving() end
-	end)
+	r:SetScript("OnDragStart", startMove)
 	r:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
 
-	local bg = solid(r, "BACKGROUND", C.rowBg)
-	bg:SetPoint("TOPLEFT")
-	bg:SetSize(ROW_W, ROW_H)
+	r.bg = solid(r, "BACKGROUND", C.rowBg)
+	r.bg:SetPoint("TOPLEFT")
 
 	r.nameText = r:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	r.nameText:SetPoint("TOPLEFT", 6, -4)
-	r.nameText:SetTextColor(C.name[1], C.name[2], C.name[3])
 	r.nameText:SetJustifyH("LEFT")
 
 	r.pctText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	r.pctText:SetPoint("TOPRIGHT", r, "TOPLEFT", ROW_W - 6, -5)
 	r.pctText:SetJustifyH("RIGHT")
 
-	r.health = bar(r, C.health, C.healthBg, 13)
+	r.health = bar(r, C.health, C.healthBg)
 	r.health:SetPoint("TOPLEFT", 6, -19)
-	r.health:SetWidth(ROW_W - 12)
 
-	r.power = bar(r, C.power, C.powerBg, 4)
+	r.power = bar(r, C.power, C.powerBg)
 	r.power:SetPoint("TOPLEFT", r.health, "BOTTOMLEFT", 0, -3)
-	r.power:SetWidth(ROW_W - 12)
 
 	local box = CreateFrame("Frame", nil, r)
-	box:SetPoint("TOPLEFT", r, "TOPLEFT", ROW_W + GAP, 0)
-	box:SetSize(BOX_W, ROW_H)
 	box.bg = solid(box, "BACKGROUND", C.unknown)
 	box.bg:SetAllPoints()
 	box.icon = box:CreateTexture(nil, "ARTWORK")
@@ -157,6 +206,7 @@ local function createRow(i)
 	box.label:SetPoint("BOTTOM", 0, 4)
 	box.label:SetFont(box.label:GetFont(), 9, "")
 	r.box = box
+	sizeRow(r)
 	return r
 end
 
@@ -234,7 +284,7 @@ local function updateRange(r)
 end
 
 local function updateRow(r)
-	updateHealth(r) updatePower(r) updateStatus(r) updateRange(r)
+	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateRange(r)
 end
 
 function HB.RefreshPartyFrame()
@@ -243,6 +293,89 @@ end
 
 function HB.OnFollowStateChanged()
 	for _, r in ipairs(rows) do if r:IsShown() then updateStatus(r) end end
+end
+
+-- ---------------------------------------------------------------- handle, lock and resize
+local function shownRows()
+	local n = 0
+	for _, r in ipairs(rows) do if r:IsShown() then n = n + 1 end end
+	return n
+end
+
+local function sizeContainer()
+	local n = math.max(1, shownRows())
+	container:SetSize(rowW() + GAP + BOX_W, n * (rowH() + GAP) - GAP)
+	for i, r in ipairs(rows) do
+		if r:IsShown() then
+			sizeRow(r)
+			r:ClearAllPoints()
+			r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * (rowH() + GAP))
+		end
+	end
+end
+
+local function updateLockUI()
+	local unlocked = not HB.db.teamLocked
+	container.handle:SetShown(unlocked)
+	container.grip:SetShown(unlocked)
+end
+
+function HB.SetTeamFrameLocked(locked)
+	HB.db.teamLocked = locked and true or false
+	if container then updateLockUI() end
+	HB.print("team frame " .. (HB.db.teamLocked and "locked (/hb frame unlock to move it)"
+		or "unlocked: drag the bar or a row to move it, drag the corner to resize"))
+end
+
+local function createChrome()
+	local h = CreateFrame("Frame", nil, container)
+	h:SetPoint("BOTTOMLEFT", container, "TOPLEFT", 0, 2)
+	h:SetPoint("BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
+	h:SetHeight(18)
+	h:EnableMouse(true)
+	h:RegisterForDrag("LeftButton")
+	h:SetScript("OnDragStart", startMove)
+	h:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
+	solid(h, "BACKGROUND", { 0.10, 0.11, 0.13, 0.95 }):SetAllPoints()
+	local t = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	t:SetPoint("LEFT", 6, 0)
+	t:SetText("HaploBox team - drag to move")
+	local lock = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
+	lock:SetSize(48, 16)
+	lock:SetPoint("RIGHT", -2, 0)
+	lock:SetText("Lock")
+	lock:SetScript("OnClick", function() HB.SetTeamFrameLocked(true) end)
+	container.handle = h
+
+	local g = CreateFrame("Button", nil, container)
+	g:SetSize(16, 16)
+	g:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", 2, -2)
+	g:SetFrameLevel(container:GetFrameLevel() + 20)
+	solid(g, "BACKGROUND", { 0.45, 0.45, 0.50, 0.6 }):SetAllPoints()  -- visible even without the grabber art
+	g:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+	g:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+	g:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+	g:SetScript("OnMouseDown", function(self)
+		if InCombatLockdown() or HB.db.teamLocked then return end
+		local s = container:GetEffectiveScale()
+		local cx, cy = GetCursorPosition()
+		self.start = { x = cx / s, y = cy / s, w = rowW(), h = rowH(), n = math.max(1, shownRows()), s = s }
+		self:SetScript("OnUpdate", function()
+			if InCombatLockdown() then return end
+			local st = self.start
+			local x, y = GetCursorPosition()
+			x, y = x / st.s, y / st.s
+			HB.db.teamW = math.floor(math.min(MAX_W, math.max(MIN_W, st.w + (x - st.x))) + 0.5)
+			HB.db.teamRowH = math.floor(math.min(MAX_H, math.max(MIN_H, st.h + (st.y - y) / st.n)) + 0.5)
+			sizeContainer()
+		end)
+	end)
+	g:SetScript("OnMouseUp", function(self)
+		self:SetScript("OnUpdate", nil)
+		HB.SavePartyPosition()
+	end)
+	container.grip = g
+	updateLockUI()
 end
 
 -- ---------------------------------------------------------------- layout (out of combat only)
@@ -269,23 +402,26 @@ function HB.LayoutPartyFrame()
 		r.name = name
 		r.unit = unitForName(name)
 		r:SetAttribute("unit", r.unit)
-		r:ClearAllPoints()
-		r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * (ROW_H + GAP))
 		r.nameText:SetText(displayName(name))
 		if r.unit then unitRow[r.unit] = r end
 		r:Show()
 	end
 	for i = #names + 1, #rows do rows[i]:Hide() rows[i]:SetAttribute("unit", nil) end
-	container:SetSize(ROW_W + GAP + BOX_W, #names * (ROW_H + GAP) - GAP)
+	sizeContainer()
+	updateLockUI()
 	container:Show()
 	HB.RefreshPartyFrame()
 end
 
+-- Position is stored as the top-left corner, so resizing grows right and down.
 function HB.SavePartyPosition()
 	if not container then return end
 	container:StopMovingOrSizing()
-	local point, _, rel, x, y = container:GetPoint()
-	HB.db.partyPos = { point, rel, x, y }
+	local left, top = container:GetLeft(), container:GetTop()
+	if not left or not top then return end
+	HB.db.partyPos = { "TOPLEFT", "BOTTOMLEFT", left, top }
+	container:ClearAllPoints()
+	container:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
 end
 
 local function applyPosition()
@@ -297,8 +433,9 @@ end
 
 function HB.ResetPartyPosition()
 	if InCombatLockdown() then HB.print("not in combat") return end
-	HB.db.partyPos = nil
+	HB.db.partyPos, HB.db.teamW, HB.db.teamRowH = nil, nil, nil
 	applyPosition()
+	HB.LayoutPartyFrame()
 end
 
 -- ---------------------------------------------------------------- events
@@ -316,6 +453,7 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 		container:SetMovable(true)
 		container:SetClampedToScreen(true)
 		applyPosition()
+		createChrome()
 		HB.LayoutPartyFrame()
 		C_Timer.NewTicker(0.5, function()
 			if container:IsShown() then for _, r in ipairs(rows) do if r:IsShown() then updateRange(r) updateHealth(r) end end end

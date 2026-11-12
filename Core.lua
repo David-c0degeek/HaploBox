@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.2.1"
+local VERSION = "0.3.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -36,6 +36,8 @@ local DEFAULTS = {
 	teamFrame           = "auto", -- team frame on this toon: "auto" (only if it is the leader), "show" or "hide"
 	partyFrameSolo      = false,  -- also show it when not in a group
 	partyScale          = 1,
+	teamLocked          = false,  -- team frame: locked in place (unlocked shows a drag bar and resize corner)
+	teamClassColors     = true,   -- team frame: names and health bars in class colours
 	debug               = false,
 }
 
@@ -510,7 +512,8 @@ local function help()
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
-	print_("  /hb frame scale <0.5-2> | solo | reset - size, show when solo, reset position (shift-drag moves it)")
+	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
+	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
 end
@@ -581,11 +584,16 @@ SlashCmdList.HAPLOBOX = function(input)
 		elseif a == "solo" then
 			HB.db.partyFrameSolo = not HB.db.partyFrameSolo
 			print_("team frame when solo: " .. (HB.db.partyFrameSolo and "shown" or "hidden"))
+		elseif a == "lock" or a == "unlock" then
+			if HB.SetTeamFrameLocked then HB.SetTeamFrameLocked(a == "lock") end
+		elseif a == "colors" or a == "colours" then
+			HB.db.teamClassColors = not HB.db.teamClassColors
+			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off"))
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
 			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
-				.. ". Use /hb frame auto|show|hide|scale <n>|solo|reset")
+				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|scale <n>|solo|reset")
 			return
 		end
 		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end

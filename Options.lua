@@ -11,6 +11,8 @@ local TOGGLES = {
 	{ "autoFFA", "Leader: set free-for-all loot when the group changes" },
 	{ "autoRoleCheck", "Answer group finder role checks with my team role" },
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
+	{ "teamLocked", "Team frame: lock in place (unlock to move and resize)" },
+	{ "teamClassColors", "Team frame: class colours" },
 }
 
 local SOUNDS = {
@@ -48,7 +50,10 @@ function HB.CreateOptions()
 		local text = cb.Text or cb.text or cb:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
 		if not (cb.Text or cb.text) then text:SetPoint("LEFT", cb, "RIGHT", 2, 0) end
 		text:SetText(label)
-		cb:SetScript("OnClick", function(self) HB.db[key] = self:GetChecked() and true or false end)
+		cb:SetScript("OnClick", function(self)
+			HB.db[key] = self:GetChecked() and true or false
+			if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
+		end)
 		refreshers[#refreshers + 1] = function() cb:SetChecked(HB.db[key]) end
 		y = y - 26
 	end
@@ -91,7 +96,7 @@ function HB.CreateOptions()
 	end)
 	local frameHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	frameHint:SetPoint("LEFT", frameBtn, "RIGHT", 10, 0)
-	frameHint:SetText("auto = leader only. Shift-drag moves it.")
+	frameHint:SetText("auto = leader only")
 	refreshers[#refreshers + 1] = showFrameMode
 	y = y - 40
 
