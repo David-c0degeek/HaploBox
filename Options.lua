@@ -13,6 +13,12 @@ local TOGGLES = {
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
 	{ "teamLocked", "Team frame: lock in place (unlock to move and resize)" },
 	{ "teamClassColors", "Team frame: class colours" },
+	{ "teamShowXP", "Team frame: level and XP bar" },
+	{ "teamShowGold", "Team frame: gold per toon and team total" },
+	{ "teamShowBags", "Team frame: free bag slots per toon and team total" },
+	{ "bagFullAlert", "Leader: message when a toon's bags are full" },
+	{ "forwardWhispers", "Forward whispers from outside the team to the leader" },
+	{ "relayReplies", "Pass the leader's replies on (leader whispers this toon, or /hb r)" },
 }
 
 local SOUNDS = {
@@ -21,6 +27,8 @@ local SOUNDS = {
 	{ "leaderAlert", "Leader: a follower stopped following" },
 	{ "shareError", "Quest share failed" },
 	{ "inviteAccept", "Invite accepted" },
+	{ "whisperIn", "Leader: forwarded whisper" },
+	{ "bagsFull", "Leader: a toon's bags are full" },
 	{ "mountOn", "Passenger mount: on" },
 	{ "mountOff", "Passenger mount: off" },
 }
@@ -29,8 +37,14 @@ local SHARE_MODES = { "leader", "all", "off" }
 local FRAME_MODES = { "auto", "show", "hide" }
 
 function HB.CreateOptions()
-	local panel = CreateFrame("Frame")
-	panel.name = "HaploBox"
+	local outer = CreateFrame("Frame")
+	outer.name = "HaploBox"
+	local scroll = CreateFrame("ScrollFrame", nil, outer, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", 0, -4)
+	scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+	local panel = CreateFrame("Frame", nil, scroll)
+	panel:SetSize(620, 1000)
+	scroll:SetScrollChild(panel)
 
 	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 	title:SetPoint("TOPLEFT", 16, -16)
@@ -142,17 +156,18 @@ function HB.CreateOptions()
 	alertBtn:SetText("Test leader alert")
 	alertBtn:SetScript("OnClick", function() SlashCmdList.HAPLOBOX("test alert") end)
 
-	panel:SetScript("OnShow", function() for _, r in ipairs(refreshers) do r() end end)
+	panel:SetHeight(-y + 50)
+	outer:SetScript("OnShow", function() for _, r in ipairs(refreshers) do r() end end)
 
 	if Settings and Settings.RegisterCanvasLayoutCategory then
-		local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+		local category = Settings.RegisterCanvasLayoutCategory(outer, outer.name)
 		Settings.RegisterAddOnCategory(category)
 		HB.OpenOptions = function() Settings.OpenToCategory(category:GetID()) end
 	elseif InterfaceOptions_AddCategory then
-		InterfaceOptions_AddCategory(panel)
+		InterfaceOptions_AddCategory(outer)
 		HB.OpenOptions = function()
-			InterfaceOptionsFrame_OpenToCategory(panel)
-			InterfaceOptionsFrame_OpenToCategory(panel)
+			InterfaceOptionsFrame_OpenToCategory(outer)
+			InterfaceOptionsFrame_OpenToCategory(outer)
 		end
 	end
 end

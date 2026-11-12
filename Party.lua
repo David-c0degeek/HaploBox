@@ -1,4 +1,5 @@
--- HaploBox party frame: one row per team member with health, power and follow status.
+-- HaploBox party frame: one row per team member with health, power and follow status,
+-- plus an info strip (level, XP, free bag slots, gold) and a team total footer.
 -- Rows are secure unit buttons: left-click targets the member, and [@mouseover]
 -- macros work on them. Secure attributes and visibility only change out of combat.
 -- Health values may be secret on this client: they go straight into StatusBars and
@@ -20,7 +21,14 @@ local C = {
 	paused   = { 0.55, 0.38, 0.08, 0.95 },
 	broken   = { 0.55, 0.16, 0.14, 0.95 },
 	unknown  = { 0.25, 0.25, 0.28, 0.95 },
+	xp       = { 0.65, 0.30, 0.90 },
+	rested   = { 0.25, 0.47, 0.86 },
+	xpBg     = { 0.16, 0.12, 0.22, 0.90 },
+	footer   = { 0.10, 0.11, 0.13, 0.95 },
+	gold     = { 1.00, 0.82, 0.30 },
 }
+local BAG_ICON = "Interface\\Buttons\\Button-Backpack-Up"
+local FOOT_H = 22
 
 local secret = function(v) return issecretvalue and issecretvalue(v) end
 local container, rows = nil, {}
@@ -107,6 +115,30 @@ end
 local MIN_W, MAX_W, MIN_H, MAX_H = 150, 500, 28, 70
 local function rowW() return math.min(MAX_W, math.max(MIN_W, HB.db.teamW or 250)) end
 local function rowH() return math.min(MAX_H, math.max(MIN_H, HB.db.teamRowH or 38)) end
+-- the info strip below the bars: XP bar, then a line with free bag slots and gold
+local function showLine() return HB.db.teamShowGold or HB.db.teamShowBags end
+local function stripH() return (HB.db.teamShowXP and 6 or 0) + (showLine() and 15 or 0) end
+local function fullH() return rowH() + stripH() end
+
+-- ---------------------------------------------------------------- money
+local function coin(kind) return "|TInterface\\MoneyFrame\\UI-" .. kind .. "Icon:0:0:1:0|t" end
+local GOLD, SILVER, COPPER = coin("Gold"), coin("Silver"), coin("Copper")
+local function commas(n)
+	local s, k = tostring(n), 0
+	repeat s, k = s:gsub("^(%d+)(%d%d%d)", "%1,%2") until k == 0
+	return s
+end
+-- compact: 100g and up shows gold only, under 100g gold and silver (if any), under 1g silver and copper
+function HB.FormatMoney(copper, compact)
+	copper = math.floor(copper)
+	local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+	local parts = {}
+	if g > 0 then parts[#parts + 1] = commas(g) .. GOLD end
+	if compact and g >= 100 then return parts[1] end
+	if (g > 0 and not compact) or s > 0 then parts[#parts + 1] = s .. SILVER end
+	if not (compact and g > 0) then parts[#parts + 1] = c .. COPPER end
+	return table.concat(parts, " ")
+end
 
 -- ---------------------------------------------------------------- class colours
 local function classFileFor(r)
@@ -167,18 +199,25 @@ end
 
 -- Sizes and anchors that depend on the row size. Out of combat only (rows are secure).
 local function sizeRow(r)
-	local W, H = rowW(), rowH()
-	r:SetSize(W + GAP + BOX_W, H)
-	r.bg:SetSize(W, H)
+	local W, H, FH = rowW(), rowH(), fullH()
+	r:SetSize(W + GAP + BOX_W, FH)
+	r.bg:SetSize(W, FH)
 	r.focusMaxW = math.floor(W * 0.45)
 	r.nameText:SetWidth(math.floor(W * 0.45))
 	local barH = math.max(6, H - 25)
 	r.health:SetSize(W - 12, barH)
 	r.power:SetSize(W - 12, math.max(3, math.floor(barH / 3)))
+	r.rested:SetSize(W - 12, 3)
+	r.rested:SetShown(HB.db.teamShowXP and true or false)
+	r.moneyText:ClearAllPoints()
+	r.moneyText:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT", W - 6, 3)
+	r.moneyText:SetShown(HB.db.teamShowGold and true or false)
+	r.bagIcon:SetShown(HB.db.teamShowBags and true or false)
+	r.bagText:SetShown(HB.db.teamShowBags and true or false)
 	r.box:ClearAllPoints()
 	r.box:SetPoint("TOPLEFT", r, "TOPLEFT", W + GAP, 0)
-	r.box:SetSize(BOX_W, H)
-	r.box.label:SetShown(H >= 32)
+	r.box:SetSize(BOX_W, FH)
+	r.box.label:SetShown(FH >= 32)
 end
 
 local function createRow(i)
@@ -219,6 +258,21 @@ local function createRow(i)
 
 	r.power = bar(r, C.power, C.powerBg)
 	r.power:SetPoint("TOPLEFT", r.health, "BOTTOMLEFT", 0, -3)
+
+	-- info strip: XP bar (rested XP shows as a lighter bar behind it), bags left, gold right
+	r.rested = bar(r, C.rested, C.xpBg)
+	r.rested:SetPoint("TOPLEFT", r.power, "BOTTOMLEFT", 0, -2)
+	r.xp = bar(r.rested, C.xp, { 0, 0, 0, 0 })
+	r.xp:SetAllPoints(r.rested)
+	r.xp:SetFrameLevel(r.rested:GetFrameLevel() + 1)
+	r.bagIcon = r:CreateTexture(nil, "OVERLAY")
+	r.bagIcon:SetSize(12, 12)
+	r.bagIcon:SetTexture(BAG_ICON)
+	r.bagIcon:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 6, 2)
+	r.bagText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	r.bagText:SetPoint("LEFT", r.bagIcon, "RIGHT", 3, 0)
+	r.moneyText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	r.moneyText:SetJustifyH("RIGHT")
 
 	local box = CreateFrame("Frame", nil, r)
 	box.bg = solid(box, "BACKGROUND", C.unknown)
@@ -351,12 +405,73 @@ local function updateFocus(r)
 	r.focusIcon:SetAlpha(f and 1 or 0.35)
 end
 
+-- Level, XP, bags and gold come from the toon itself (HB.stats). A toon without
+-- this version of HaploBox, or one that has not reported yet, shows a dash.
+local function bagColor(free)
+	if free == 0 then return "|cffff5544" elseif free <= 5 then return "|cffffaa33" end
+	return "|cffdddddd"
+end
+
+local function updateStats(r)
+	local s = HB.stats and HB.stats[HB.Norm(r.name)]
+	local lvl = HB.db.teamShowXP and s and s.lvl
+	r.nameText:SetText((lvl and ("|cffffdc78" .. lvl .. "|r ") or "") .. displayName(r.name))
+	if s and s.xpMax and s.xpMax > 0 and s.xp then
+		r.rested:SetMinMaxValues(0, s.xpMax)
+		r.rested:SetValue(math.min(s.xpMax, s.xp + (s.rest or 0)))
+		r.xp:SetMinMaxValues(0, s.xpMax)
+		r.xp:SetValue(s.xp)
+		r.rested:SetAlpha(1)
+	else
+		r.rested:SetAlpha(0)  -- max level or unknown: keep the space, hide the bar
+	end
+	if s and s.free then
+		r.bagText:SetText(bagColor(s.free) .. s.free .. "|r")
+		r.bagIcon:SetAlpha(1)
+	else
+		r.bagText:SetText("|cff777777-|r")
+		r.bagIcon:SetAlpha(0.35)
+	end
+	r.moneyText:SetText(s and s.copper and HB.FormatMoney(s.copper, true) or "|cff777777-|r")
+end
+
+local function updateFooter()
+	local ft = container and container.footer
+	if not ft or not ft:IsShown() then return end
+	local copper, free, slots, known, total = 0, 0, 0, 0, 0
+	for _, r in ipairs(rows) do
+		if r:IsShown() then
+			total = total + 1
+			local s = HB.stats and HB.stats[HB.Norm(r.name)]
+			if s and (s.copper or s.free) then
+				known = known + 1
+				copper = copper + (s.copper or 0)
+				free, slots = free + (s.free or 0), slots + (s.slots or 0)
+			end
+		end
+	end
+	ft.bagIcon:SetShown(HB.db.teamShowBags and true or false)
+	ft.bagText:SetShown(HB.db.teamShowBags and true or false)
+	ft.bagText:SetText(bagColor(free) .. free .. "|r|cff888888 / " .. slots .. " free|r")
+	ft.moneyText:SetShown(HB.db.teamShowGold and true or false)
+	ft.moneyText:SetText(HB.FormatMoney(copper, false))
+	ft.known:SetText(known < total and ("|cff777777" .. known .. " of " .. total .. "|r") or "")
+end
+
 local function updateRow(r)
-	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateRange(r)
+	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateStats(r) updateRange(r)
 end
 
 function HB.RefreshPartyFrame()
 	for _, r in ipairs(rows) do if r:IsShown() then updateRow(r) end end
+	updateFooter()
+end
+
+function HB.OnStatsChanged(key)
+	for _, r in ipairs(rows) do
+		if r:IsShown() and HB.Norm(r.name) == key then updateStats(r) end
+	end
+	updateFooter()
 end
 
 function HB.OnFocusChanged()
@@ -376,14 +491,48 @@ end
 
 local function sizeContainer()
 	local n = math.max(1, shownRows())
-	container:SetSize(rowW() + GAP + BOX_W, n * (rowH() + GAP) - GAP)
+	local W, FH = rowW() + GAP + BOX_W, fullH()
+	local rowsH = n * (FH + GAP) - GAP
+	local ft = container.footer
+	ft:SetShown(showLine() and true or false)
+	container:SetSize(W, rowsH + (ft:IsShown() and (GAP + FOOT_H) or 0))
 	for i, r in ipairs(rows) do
 		if r:IsShown() then
 			sizeRow(r)
 			r:ClearAllPoints()
-			r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * (rowH() + GAP))
+			r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * (FH + GAP))
 		end
 	end
+	ft:ClearAllPoints()
+	ft:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(rowsH + GAP))
+	ft:SetSize(W, FOOT_H)
+	updateFooter()
+end
+
+local function createFooter()
+	local ft = CreateFrame("Frame", nil, container)
+	ft:EnableMouse(true)
+	ft:RegisterForDrag("LeftButton")
+	ft:SetScript("OnDragStart", startMove)
+	ft:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
+	solid(ft, "BACKGROUND", C.footer):SetAllPoints()
+	local line = solid(ft, "BORDER", C.gold)
+	line:SetPoint("TOPLEFT") line:SetPoint("TOPRIGHT") line:SetHeight(1)
+	local label = ft:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	label:SetPoint("LEFT", 8, 0)
+	label:SetText("TEAM")
+	label:SetTextColor(C.gold[1], C.gold[2], C.gold[3])
+	ft.bagIcon = ft:CreateTexture(nil, "OVERLAY")
+	ft.bagIcon:SetSize(13, 13)
+	ft.bagIcon:SetTexture(BAG_ICON)
+	ft.bagIcon:SetPoint("LEFT", label, "RIGHT", 10, 0)
+	ft.bagText = ft:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	ft.bagText:SetPoint("LEFT", ft.bagIcon, "RIGHT", 3, 0)
+	ft.moneyText = ft:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	ft.moneyText:SetPoint("RIGHT", -8, 0)
+	ft.known = ft:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	ft.known:SetPoint("RIGHT", ft.moneyText, "LEFT", -8, 0)
+	container.footer = ft
 end
 
 local function updateLockUI()
@@ -525,6 +674,7 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 		container:SetMovable(true)
 		container:SetClampedToScreen(true)
 		applyPosition()
+		createFooter()
 		createChrome()
 		HB.LayoutPartyFrame()
 		C_Timer.NewTicker(0.5, function()

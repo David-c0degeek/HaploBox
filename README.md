@@ -2,7 +2,7 @@
 
 **Run five characters like one.** HaploBox is a World of Warcraft addon for multiboxers. You see your whole team at a glance, you hear the moment someone falls behind, and the chores between pulls (invites, quest sharing, loot) happen on their own.
 
-![The HaploBox team frame: health, power, focus and follow status for every character](docs/team-frame.png)
+![The HaploBox team frame: health, power, XP, bags, gold, focus and follow status for every character](docs/team-frame.png)
 
 Built for **WoW Forever** (interface 16001). It also loads on Classic Era and retail.
 
@@ -14,8 +14,9 @@ Multiboxing goes wrong in small, silent ways. A follower snags on a fence post. 
 
 | | |
 |---|---|
-| **See the team** | One compact frame: health, power, focus target and follow status for every character. |
+| **See the team** | One compact frame: health, power, XP, free bag slots, gold, focus target and follow status for every character. |
 | **Hear problems** | A follower that stops following triggers a raid warning on the leader's screen. |
+| **Never miss a whisper** | Whispers to any follower show up on the leader, and you can answer from there. |
 | **Skip the busywork** | Invites, quest sharing, free-for-all loot and role checks are handled automatically. |
 | **Stay safe** | No protected or Edit Mode frames are touched, so the addon cannot taint your UI. |
 
@@ -25,11 +26,16 @@ Multiboxing goes wrong in small, silent ways. A follower snags on a fence post. 
 
 Each row is one character:
 
-- **Name** in its class colour.
+- **Level and name**, the name in its class colour.
 - **Health bar** with a percentage, or `dead` / `offline`.
 - **Power bar** in the right colour for mana, rage or energy.
+- **XP bar** in purple, with rested XP as a blue extension. Hidden at max level.
+- **Free bag slots** (bottom left). Amber at 5 or fewer, red when the bags are full.
+- **Gold** (bottom right), kept short: `128g`, `52g 13s`, `85s 20c`.
 - **Focus** (crosshair, top right): the target that character has on focus. A dash means no focus.
 - **Status box** (right side): who that character is following.
+
+The **TEAM** line at the bottom adds it all up: free bag slots and the gold of the whole team. When a character has not reported yet (an older HaploBox, or not logged in), its row shows a dash and the total says `3 of 5`.
 
 Click a row to target that character. `[@mouseover]` macros work on the rows, so your healer can heal straight from the frame. Characters out of range fade.
 
@@ -67,7 +73,24 @@ When a follower stops following, the leader gets a raid warning and a sound. Onl
 
 ![Raid warning on the leader's screen: Nyra stopped following!](docs/leader-alert.png)
 
-Followers also send their cast errors (out of range, no line of sight, out of mana, target not in front) to the leader's chat, so you know why the mage is not casting.
+Followers also send their cast errors (out of range, no line of sight, out of mana, target not in front) to the leader's chat, so you know why the mage is not casting. And when a follower's bags fill up, the leader gets a message.
+
+---
+
+## Never miss a whisper
+
+Someone whispers your warlock while you play the druid. HaploBox puts the whisper in the leader's chat, with the name of the character that got it:
+
+```
+[Haplina Darkheart] Bob whispers: are you selling that cloth?
+```
+
+Answer in one of two ways:
+
+- `/hb r sure, 2g a stack` sends the reply through the character that got the last whisper.
+- Or whisper that character directly (`/w Haplina Darkheart sure, 2g a stack`). For 5 minutes after a forwarded whisper, it passes your whispers on to Bob.
+
+You get a confirmation: `sent to Bob via Haplina Darkheart`. Whispers between your own characters are never forwarded, and GM whispers are marked `<GM>`.
 
 ---
 
@@ -117,6 +140,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb frame auto\|show\|hide` | Show the frame on this character: `auto` = only on the leader. |
 | `/hb frame lock\|unlock` | Lock it in place, or unlock it to move and resize. |
 | `/hb frame colors` | Turn class colours on or off. |
+| `/hb frame xp\|gold\|bags` | Show or hide level and XP, gold, or free bag slots. |
 | `/hb frame scale 0.8` | Scale the whole frame (0.5 to 2). |
 | `/hb frame solo` | Also show the frame when you are not in a group. |
 | `/hb frame reset` | Put the frame back to its starting position and size. |
@@ -125,6 +149,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 
 | Command | What it does |
 |---|---|
+| `/hb r <text>` | Leader: reply to the last forwarded whisper. |
 | `/hb ffa` | Set free-for-all loot (group leader only). |
 | `/hb share` | Share every quest in your log with the group. |
 | `/hb sound <event> <value\|off>` | Change a sound. |
@@ -145,6 +170,8 @@ Every sound can be changed or switched off in the options panel or with `/hb sou
 | `followOn` / `followOff` | This character started or stopped following. |
 | `shareError` | A quest share failed. |
 | `inviteAccept` | An invite from the leader was accepted. |
+| `whisperIn` | Leader: a forwarded whisper came in. |
+| `bagsFull` | Leader: a character's bags are full (off by default). |
 | `mountOn` / `mountOff` | Passenger mount on or off (off by default). |
 
 A sound value can be:
@@ -175,7 +202,8 @@ mklink /J "C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\H
 ## Under the hood
 
 - **Communication:** every character talks over a hidden addon channel (`HaploBox`) in party or raid. Nothing appears in chat.
-- **Each character reports itself:** follow state, follow target and focus are sent when they change, and again when someone joins or logs in. Every character needs HaploBox, ideally the same version.
+- **Each character reports itself:** follow state, follow target, focus, level, XP, gold and bag space are sent when they change (stats at most once a second), and again when someone joins or logs in. The game only gives these numbers for your own character, so every character needs HaploBox, ideally the same version.
+- **Whispers:** a follower forwards a whisper over the same hidden channel. Long whispers are split into parts and joined again on the leader. If the game hides a whisper's text from addons, the leader still sees who whispered.
 - **Secret values:** newer clients can hide health values from addons. HaploBox only passes them to status bars and text, never to its own calculations, so it keeps working where other frames throw errors.
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.
 - **Settings:** stored per account in `HaploBoxDB`. The team (leader, roles, order) is stored in `HaploBoxTeam`.

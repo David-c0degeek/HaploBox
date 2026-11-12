@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.6.0"
+local VERSION = "0.7.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -22,6 +22,8 @@ local DEFAULTS = {
 		inviteAccept = "IG_PLAYER_INVITE",
 		mountOn      = false,
 		mountOff     = false,
+		whisperIn    = "TELL_MESSAGE",
+		bagsFull     = false,
 	},
 	alertOnFollowStart  = false,  -- leader also gets a (green) message when a follower starts following
 	autoAcceptInvite    = true,   -- followers accept invites from the leader
@@ -38,6 +40,12 @@ local DEFAULTS = {
 	partyScale          = 1,
 	teamLocked          = false,  -- team frame: locked in place (unlocked shows a drag bar and resize corner)
 	teamClassColors     = true,   -- team frame: names and health bars in class colours
+	teamShowXP          = true,   -- team frame: level and XP bar
+	teamShowGold        = true,   -- team frame: gold per toon and the team total
+	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
+	bagFullAlert        = true,   -- leader: message when a toon's bags are full
+	forwardWhispers     = true,   -- followers: forward whispers from outside the team to the leader
+	relayReplies        = true,   -- followers: pass the leader's replies on to the last whisperer
 	debug               = false,
 }
 
@@ -361,6 +369,219 @@ function handlers.PLAYER_FOCUS_CHANGED()
 	send(focusMsg())
 end
 
+-- Level, XP, money and bag space of every team member. The game only gives these
+-- for your own character, so each toon sends S|level|xp|xpMax|rested|copper|free|slots
+-- when one of them changes (at most once a second) and when asked with F|?.
+HB.stats = {}
+local STAT_FIELDS = { "lvl", "xp", "xpMax", "rest", "copper", "free", "slots" }
+local function num(v)
+	if v == nil or secret(v) then return nil end
+	return tonumber(v)
+end
+
+local function bagSpace()
+	local CC = C_Container
+	local numSlots = (CC and CC.GetContainerNumSlots) or GetContainerNumSlots
+	local numFree = (CC and CC.GetContainerNumFreeSlots) or GetContainerNumFreeSlots
+	if not numSlots or not numFree then return nil end
+	local free, total = 0, 0
+	for bag = 0, NUM_BAG_SLOTS or 4 do
+		local okS, slots = pcall(numSlots, bag)
+		local okF, f, family = pcall(numFree, bag)
+		slots, f = okS and num(slots), okF and num(f)
+		-- only general bags: quivers, ammo pouches and soul bags hold one kind of item
+		if slots and f and (family == nil or secret(family) or family == 0) then
+			total, free = total + slots, free + f
+		end
+	end
+	return free, total
+end
+
+local function atMaxLevel(lvl)
+	if IsXPUserDisabled and IsXPUserDisabled() then return true end
+	if IsPlayerAtEffectiveMaxLevel then
+		local ok, v = pcall(IsPlayerAtEffectiveMaxLevel)
+		if ok and v ~= nil and not secret(v) then return v end
+	end
+	local cap = num(MAX_PLAYER_LEVEL)
+	return lvl and cap and lvl >= cap or false
+end
+
+local function myStats()
+	local s = { lvl = num(UnitLevel("player")) }
+	if atMaxLevel(s.lvl) then
+		s.xp, s.xpMax, s.rest = 0, 0, 0
+	else
+		s.xp, s.xpMax = num(UnitXP("player")), num(UnitXPMax("player"))
+		s.rest = num(GetXPExhaustion and GetXPExhaustion()) or 0
+	end
+	s.copper = num(GetMoney and GetMoney())
+	s.free, s.slots = bagSpace()
+	return s
+end
+
+local function statsMsg(s)
+	local t = {}
+	for i, k in ipairs(STAT_FIELDS) do t[i] = s[k] and tostring(math.floor(s[k])) or "" end
+	return "S|" .. table.concat(t, "|")
+end
+
+local function setStats(name, s)
+	local k = HB.Norm(name)
+	if not k then return end
+	local old = HB.stats[k]
+	HB.stats[k] = s
+	if HB.db.bagFullAlert and HB.IAmLeader() and s.free == 0 and (s.slots or 0) > 0
+		and old and (old.free or 0) > 0 then
+		print_("|cffff4444" .. shortName(name) .. ": bags are full|r")
+		HB.PlaySound("bagsFull")
+	end
+	if HB.OnStatsChanged then HB.OnStatsChanged(k) end
+end
+
+local function onStats(sender, ...)
+	local v, s = { ... }, {}
+	for i, k in ipairs(STAT_FIELDS) do s[k] = tonumber(v[i]) end
+	setStats(sender, s)
+end
+
+local statsPending, lastStatsMsg = false, nil
+local function sendStats()
+	lastStatsMsg = statsMsg(myStats())
+	send(lastStatsMsg)
+end
+local function updateMyStats()
+	setStats(HB.UnitIdent("player"), myStats())
+	if statsPending then return end
+	statsPending = true
+	C_Timer.After(1, function()
+		statsPending = false
+		if statsMsg(myStats()) ~= lastStatsMsg then sendStats() end
+	end)
+end
+for _, e in ipairs({ "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "PLAYER_MONEY",
+	"BAG_UPDATE", "BAG_UPDATE_DELAYED" }) do
+	handlers[e] = updateMyStats
+end
+
+-- ---------------------------------------------------------------- whisper forwarding
+-- A follower forwards whispers from outside the team to the leader:
+--   W|<flags>|<from>|<i>|<n>|<text>   flags: GM (from a GM), H (text hidden by the game)
+-- The leader answers with /hb r <text>, which sends Y|<toon>|<to>|<i>|<n>|<text>, or by
+-- whispering the toon directly within 5 minutes of the last forwarded whisper.
+-- The toon whispers the text on and confirms with K|<to>|ok, K|<to>|fail or K|<to>|hidden.
+-- Long text is split: addon messages are limited to 255 bytes.
+local CHUNK, RELAY_WINDOW = 200, 300
+local function sendText(head, text)
+	text = text or ""
+	local pieces, pos = {}, 1
+	repeat
+		local stop = pos + CHUNK - 1
+		-- never cut inside a UTF-8 character
+		while stop < #text and stop > pos and text:byte(stop + 1) >= 0x80 and text:byte(stop + 1) < 0xC0 do
+			stop = stop - 1
+		end
+		pieces[#pieces + 1] = text:sub(pos, stop)
+		pos = stop + 1
+	until pos > #text
+	for i, p in ipairs(pieces) do send(head .. "|" .. i .. "|" .. #pieces .. "|" .. p) end
+end
+
+local partial = {}
+local function joinText(key, i, n, piece)
+	i, n = tonumber(i), tonumber(n)
+	if not i or not n or n < 1 or n > 10 or i > n then return nil end
+	if n == 1 then return piece end
+	if i == 1 or not partial[key] then partial[key] = {} end
+	partial[key][i] = piece
+	if i < n then return nil end
+	local p = partial[key]
+	partial[key] = nil
+	for j = 1, n do if not p[j] then return nil end end
+	return table.concat(p, "", 1, n)
+end
+
+local function isTeamName(name)
+	local k = HB.Norm(name)
+	if not k then return false end
+	if HB.IsLeaderName(name) then return true end
+	for _, n in ipairs(HaploBoxTeam.order or {}) do if HB.Norm(n) == k then return true end end
+	for n in pairs(HaploBoxTeam.roles or {}) do if HB.Norm(n) == k then return true end end
+	return false
+end
+
+local lastWhisperer, lastWhisperAt = nil, 0
+local function relayTo(who, text)
+	local fn = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+	local ok = fn and pcall(fn, text, "WHISPER", nil, who)
+	if ok then lastWhisperAt = GetTime() end
+	send("K|" .. who .. "|" .. (ok and "ok" or "fail"))
+end
+
+function handlers.CHAT_MSG_WHISPER(text, sender, _, _, _, flag)
+	sender = str(sender)
+	if not sender or not IsInGroup() or HB.IAmLeader() then return end
+	if HB.IsLeaderName(sender) then
+		-- the leader answers a forwarded whisper by whispering this toon
+		if not HB.db.relayReplies or not lastWhisperer or GetTime() - lastWhisperAt > RELAY_WINDOW then return end
+		if secret(text) or type(text) ~= "string" then send("K|" .. lastWhisperer .. "|hidden") return end
+		relayTo(lastWhisperer, text)
+		return
+	end
+	if not HB.db.forwardWhispers or isTeamName(sender) then return end
+	lastWhisperer, lastWhisperAt = sender, GetTime()
+	local flags = (flag == "GM" or flag == "DEV") and "GM" or ""
+	if secret(text) or type(text) ~= "string" then
+		sendText("W|" .. flags .. "H|" .. sender, "")
+	else
+		sendText("W|" .. flags .. "|" .. sender, text)
+	end
+end
+
+local function onWhisperForward(sender, msg)
+	if not HB.IAmLeader() then return end
+	local flags, who, i, n, piece = msg:match("^W|([^|]*)|([^|]*)|(%d+)|(%d+)|(.*)$")
+	if not who or who == "" then return end
+	local text = joinText("W" .. sender, i, n, piece)
+	if not text then return end
+	HB.lastRelay = { toon = sender, who = who }
+	local gm = flags:find("GM") and "|cff00ccff<GM>|r " or ""
+	local body = flags:find("H") and "|cff999999(the game hid the text)|r" or text
+	local c = (ChatTypeInfo and ChatTypeInfo.WHISPER) or { r = 1, g = 0.5, b = 1 }
+	DEFAULT_CHAT_FRAME:AddMessage("|cff33ccff[" .. shortName(sender) .. "]|r " .. gm .. shortName(who)
+		.. " whispers: " .. body, c.r, c.g, c.b)
+	HB.PlaySound("whisperIn")
+end
+
+local function onReplyRequest(sender, msg)
+	if not HB.IsLeaderName(sender) then return end
+	local toon, who, i, n, piece = msg:match("^Y|([^|]*)|([^|]*)|(%d+)|(%d+)|(.*)$")
+	if not who or who == "" or HB.Norm(toon) ~= HB.Norm(HB.UnitIdent("player")) then return end
+	local text = joinText("Y" .. sender, i, n, piece)
+	if text and text ~= "" then relayTo(who, text) end
+end
+
+local function onRelayResult(sender, who, result)
+	if not HB.IAmLeader() then return end
+	if result == "ok" then
+		print_("|cffff80ffsent to " .. shortName(who) .. " via " .. shortName(sender) .. "|r")
+	elseif result == "hidden" then
+		print_("|cffff4444" .. shortName(sender) .. " could not read your reply (hidden by the game); use /hb r|r")
+	else
+		print_("|cffff4444" .. shortName(sender) .. " could not whisper " .. shortName(who) .. "|r")
+	end
+end
+
+function HB.Reply(text)
+	local lr = HB.lastRelay
+	if not lr then print_("no forwarded whisper to reply to") return end
+	if not text or text == "" then
+		print_("/hb r <text> replies to " .. shortName(lr.who) .. " via " .. shortName(lr.toon))
+		return
+	end
+	sendText("Y|" .. lr.toon .. "|" .. lr.who, text)
+end
+
 local lastQuery = 0
 local function queryFollowStates()
 	if not IsInGroup() or GetTime() - lastQuery < 3 then return end
@@ -368,6 +589,7 @@ local function queryFollowStates()
 	send("F|?")
 	if not HB.IAmLeader() then send(myFollowMsg(true)) end
 	send(focusMsg())
+	sendStats()
 end
 
 function handlers.ADDON_LOADED(name)
@@ -396,6 +618,7 @@ end
 
 function handlers.PLAYER_ENTERING_WORLD()
 	C_Timer.After(3, queryFollowStates)
+	updateMyStats()
 end
 
 function handlers.PLAYER_LOGIN()
@@ -565,10 +788,17 @@ end
 function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	if prefix ~= PREFIX or secret(msg) or secret(sender) then return end
 	if HB.Norm(sender) == HB.Norm(HB.UnitIdent("player")) then return end
+	-- whisper messages carry free text (which may contain "|"), so they are matched whole
+	local head = msg:sub(1, 2)
+	if head == "W|" then onWhisperForward(sender, msg) return end
+	if head == "Y|" then onReplyRequest(sender, msg) return end
+	if head == "S|" then onStats(sender, select(2, strsplit("|", msg))) return end
 	local kind, code, arg = strsplit("|", msg)
+	if kind == "K" then onRelayResult(sender, code, arg) return end
 	if kind == "F" and code == "?" then
 		if not HB.IAmLeader() then send(myFollowMsg(true)) end
 		send(focusMsg())
+		sendStats()
 		return
 	end
 	if kind == "M" then onTeamMessage(sender, code, arg) return end
@@ -635,11 +865,13 @@ local function help()
 	print_("  /hb role tank|healer|dps - your role (healer: follow arrows, role checks); sent to the group")
 	print_("  /hb ffa - set free-for-all loot (group leader only)")
 	print_("  /hb share - share every quest in your log with the group")
-	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept mountOn mountOff")
+	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept whisperIn bagsFull mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
+	print_("  /hb frame xp | gold | bags - show or hide level and XP, gold, free bag slots")
+	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
 end
@@ -664,6 +896,8 @@ SlashCmdList.HAPLOBOX = function(input)
 	elseif cmd == "team" then
 		if rest:lower() == "show" then print_("team: " .. HB.TeamSummary()) return end
 		HB.SetTeamFromGroup()
+	elseif cmd == "r" or cmd == "reply" then
+		HB.Reply(rest)
 	elseif cmd == "ffa" then
 		HB.SetFFA(false)
 	elseif cmd == "share" then
@@ -720,11 +954,15 @@ SlashCmdList.HAPLOBOX = function(input)
 		elseif a == "colors" or a == "colours" then
 			HB.db.teamClassColors = not HB.db.teamClassColors
 			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off"))
+		elseif a == "xp" or a == "gold" or a == "bags" then
+			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags" })[a]
+			HB.db[key] = not HB.db[key]
+			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden"))
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
 			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
-				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|scale <n>|solo|reset")
+				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|scale <n>|solo|reset")
 			return
 		end
 		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
