@@ -182,6 +182,4 @@ mklink /J "C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\H
 
 ---
 
-## Credits
-
-- **JCDR**: the visual concepts for the team frame (layout, status box, focus display), plus brainstorming and many of the ideas behind HaploBox.
+<sub>Visual concepts, brainstorming and ideas by JCDR.</sub>
