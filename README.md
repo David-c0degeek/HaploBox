@@ -179,3 +179,9 @@ mklink /J "C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\H
 - **Secret values:** newer clients can hide health values from addons. HaploBox only passes them to status bars and text, never to its own calculations, so it keeps working where other frames throw errors.
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.
 - **Settings:** stored per account in `HaploBoxDB`. The team (leader, roles, order) is stored in `HaploBoxTeam`.
+
+---
+
+## Credits
+
+- **JCDR**: the visual concepts for the team frame (layout, status box, focus display), plus brainstorming and many of the ideas behind HaploBox.
