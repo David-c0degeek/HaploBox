@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.8.0"
+local VERSION = "0.8.1"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -45,6 +45,7 @@ local DEFAULTS = {
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
 	autoPartyRole       = true,   -- set my party and group finder role from my team role
+	hideQuestTracker    = true,   -- hide Blizzard's quest tracker (objective tracker)
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
 	forwardWhispers     = true,   -- followers: forward whispers from outside the team to the leader
 	relayReplies        = true,   -- followers: pass the leader's replies on to the last whisperer
@@ -645,6 +646,8 @@ end
 
 function handlers.PLAYER_LOGIN()
 	C_Timer.After(2, HB.ApplyRoles)
+	HB.ApplyQuestTracker()
+	C_Timer.After(3, HB.ApplyQuestTracker)  -- some clients build the tracker late
 	local leader = HB.Leader()
 	if leader then
 		print_(VERSION .. " loaded. Leader: |cffffff00" .. leader .. "|r" .. (HB.IAmLeader() and " (you)" or ""))
@@ -852,6 +855,45 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	end
 end
 
+-- ---------------------------------------------------------------- quest tracker
+-- Hides Blizzard's quest tracker. On WoW Forever the objective tracker shows itself
+-- again on updates, so an OnShow hook hides it each time. A protected tracker can only
+-- be hidden or shown out of combat; that waits for PLAYER_REGEN_ENABLED. Never calls
+-- the tracker's Update(): on Forever that runs Blizzard's layout and taints it.
+local trackerHooked, trackerHidden = false, false
+local function questTracker()
+	return ObjectiveTrackerFrame or WatchFrame or QuestWatchFrame
+end
+
+function HB.ApplyQuestTracker()
+	local t = questTracker()
+	if not t then return end
+	local hide = HB.db.hideQuestTracker and true or false
+	if not hide and not trackerHidden then return end  -- never touch a tracker we did not hide
+	if InCombatLockdown() and t.IsProtected and t:IsProtected() then
+		f:RegisterEvent("PLAYER_REGEN_ENABLED")
+		return
+	end
+	if hide and not trackerHooked then
+		t:HookScript("OnShow", function()
+			if HB.db.hideQuestTracker then HB.ApplyQuestTracker() end
+		end)
+		trackerHooked = true
+	end
+	if hide then
+		if t:IsShown() then t:Hide() end
+		trackerHidden = true
+	else
+		t:Show()
+		trackerHidden = false
+	end
+end
+
+function handlers.PLAYER_REGEN_ENABLED()
+	f:UnregisterEvent("PLAYER_REGEN_ENABLED")
+	HB.ApplyQuestTracker()
+end
+
 local GAME_ROLE = { tank = "TANK", healer = "HEALER", dps = "DAMAGER" }
 -- Party role icon and group finder roles from my team role.
 function HB.ApplyRoles()
@@ -928,6 +970,7 @@ local function help()
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
 	print_("  /hb frame xp | gold | bags | buffs - show or hide level and XP, gold, free bag slots, buffs")
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
+	print_("  /hb tracker - hide or show Blizzard's quest tracker")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
 end
@@ -948,6 +991,11 @@ SlashCmdList.HAPLOBOX = function(input)
 		HB.SetTeamFromGroup()
 	elseif cmd == "r" or cmd == "reply" then
 		HB.Reply(rest)
+	elseif cmd == "tracker" then
+		HB.db.hideQuestTracker = not HB.db.hideQuestTracker
+		HB.ApplyQuestTracker()
+		print_("quest tracker " .. (HB.db.hideQuestTracker and "hidden" or "shown")
+			.. (InCombatLockdown() and " (after combat)" or ""))
 	elseif cmd == "ffa" then
 		HB.SetFFA(false)
 	elseif cmd == "share" then

@@ -101,6 +101,7 @@ You get a confirmation: `sent to Bob via Haplina Darkheart`. Whispers between yo
 - **Quests:** when the leader accepts a quest, it is shared with the group and the followers accept it. A failed share plays a sound and tells you why. Prefer every character to share? Set **Share quests I accept** to `all` in the options panel.
 - **Loot:** the leader sets free-for-all loot when someone joins, or on demand with `/hb ffa`. WoW Forever has no `/ffa` command.
 - **Roles:** each character sets its own party role (tank, healer or damage) and its group finder roles from its team role, answers role polls and answers group finder role checks.
+- **Quest tracker:** Blizzard's quest tracker is hidden, which keeps five screens tidy. Turn it back on with `/hb tracker` or the options panel.
 - **Optional:** followers leave the group when the leader leaves.
 
 Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type `/hb options`).
@@ -153,6 +154,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb r <text>` | Leader: reply to the last forwarded whisper. |
 | `/hb ffa` | Set free-for-all loot (group leader only). |
 | `/hb share` | Share every quest in your log with the group. |
+| `/hb tracker` | Hide or show Blizzard's quest tracker (hidden by default). |
 | `/hb sound <event> <value\|off>` | Change a sound. |
 | `/hb test alert` / `/hb test <event>` | Try the leader alert or a sound. |
 | `/hb who` | Show how the game names you and your target. |

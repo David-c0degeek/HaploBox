@@ -18,6 +18,7 @@ local TOGGLES = {
 	{ "teamShowBags", "Team frame: free bag slots per toon and team total" },
 	{ "teamShowBuffs", "Team frame: group buffs with timers" },
 	{ "autoPartyRole", "Set my party role and group finder role from my team role" },
+	{ "hideQuestTracker", "Hide Blizzard's quest tracker" },
 	{ "bagFullAlert", "Leader: message when a toon's bags are full" },
 	{ "forwardWhispers", "Forward whispers from outside the team to the leader" },
 	{ "relayReplies", "Pass the leader's replies on (leader whispers this toon, or /hb r)" },
@@ -119,6 +120,7 @@ function HB.CreateOptions()
 		cb:SetScript("OnClick", function(self)
 			HB.db[key] = self:GetChecked() and true or false
 			if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
+			if key == "hideQuestTracker" then HB.ApplyQuestTracker() end
 		end)
 		refreshers[#refreshers + 1] = function() cb:SetChecked(HB.db[key]) end
 		y = y - 26
