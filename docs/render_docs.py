@@ -16,7 +16,8 @@ F_LABEL = font("segoeuib.ttf", 8.5)
 F_TITLE = font("segoeuib.ttf", 13)
 F_CAP = font("segoeui.ttf", 11)
 
-ROW_W, ROW_H, GAP, BOX_W = 250, 59, 3, 56  # 38 for name and bars + 21 for the info strip
+ROW_W, ROW_H, GAP, BOX_W = 250, 73, 3, 56  # 38 for name and bars + 12 XP bar + 23 bags/buffs/gold line
+XPH, BUFF = 9, 20
 FOOT_H = 22
 BG = (17, 18, 22)
 ROW_BG = (41, 43, 51)
@@ -34,6 +35,25 @@ FOCUS = (255, 209, 77)
 XP, RESTED, XP_BG = (166, 77, 230), (64, 120, 220), (40, 30, 55)
 COIN = {"g": (255, 209, 0), "s": (199, 199, 210), "c": (232, 150, 80)}
 F_TINY = font("segoeuib.ttf", 9)
+
+# buff icons cropped from the concept screenshot (above its baked-in timers)
+_concept = Image.open(os.path.join(REPO, "concept", "buffs.png")).convert("RGBA")
+BUFF_ICONS = [_concept.crop((x0 + 2, 52, x0 + 46, 88)) for x0 in (548, 605, 660, 715, 770)]
+
+def buffs(img, d, cx, cy, items):
+    """Buff icons with the time left on them, centred at (cx, cy)."""
+    n = len(items)
+    x = cx - (n * (BUFF + 2) - 2) / 2
+    for ic, t in items:
+        im = BUFF_ICONS[ic].resize((int(BUFF * K), int(BUFF * K)), Image.LANCZOS)
+        warn = t.endswith("s") or t in ("1m", "2m")
+        d.rectangle(S(x - 1, cy - BUFF / 2 - 1, x + BUFF + 1, cy + BUFF / 2 + 1), fill=(255, 90, 80) if warn else (70, 72, 82))
+        img.alpha_composite(im, (int(x * K), int((cy - BUFF / 2) * K)))
+        tx, ty = x + BUFF / 2, cy + BUFF / 2 - 4
+        for ox, oy in ((-0.7, 0), (0.7, 0), (0, -0.7), (0, 0.7)):
+            text(d, (tx + ox, ty + oy), t, F_TINY, (0, 0, 0), "mm")
+        text(d, (tx, ty), t, F_TINY, (255, 90, 80) if warn else (255, 255, 255), "mm")
+        x += BUFF + 2
 
 ICONS = {}
 def icon(name, size, color=(255, 255, 255), alpha=1.0):
@@ -120,11 +140,17 @@ def row(img, x, y, m):
     d.rectangle(S(hx, py, hx + hw * m["mp"] / 100, py + 4), fill=m.get("power", MANA))
     # info strip: XP (rested behind it), then bags left and gold right
     xy = py + 6
-    d.rectangle(S(hx, xy, hx + hw, xy + 3), fill=XP_BG)
+    d.rectangle(S(hx, xy, hx + hw, xy + XPH), fill=XP_BG)
     if m.get("xp") is not None:
-        d.rectangle(S(hx, xy, hx + hw * min(1, m["xp"] + m.get("rest", 0)), xy + 3), fill=RESTED)
-        d.rectangle(S(hx, xy, hx + hw * m["xp"], xy + 3), fill=XP)
-    ly = y + ROW_H - 9
+        d.rectangle(S(hx, xy, hx + hw * min(1, m["xp"] + m.get("rest", 0)), xy + XPH), fill=RESTED)
+        d.rectangle(S(hx, xy, hx + hw * m["xp"], xy + XPH), fill=XP)
+        label = "%d%%" % round(m["xp"] * 100)
+        text(d, (hx + hw / 2 + 0.5, xy + XPH / 2 + 0.5), label, F_TINY, (0, 0, 0), "mm")
+        text(d, (hx + hw / 2, xy + XPH / 2), label, F_TINY, (255, 255, 255), "mm")
+    ly = y + ROW_H - 11.5
+    if m.get("buffs"):
+        img.alpha_composite(Image.new("RGBA", (1, 1)), (0, 0))
+        buffs(img, d, x + ROW_W / 2, ly, m["buffs"])
     bag(d, hx, ly, m.get("free", 0), F_TINY)
     money(d, hx + hw, ly, m.get("copper", 0), F_TINY)
     # status box
@@ -170,11 +196,11 @@ def frame(rows, title=None, chrome=False, caption=None, pad=14):
     return img
 
 STATS = [
-    dict(lvl=40, xp=0.62, rest=0.15, copper=521307, free=12, slots=80),
-    dict(lvl=40, xp=0.58, rest=0.30, copper=34012, free=3, slots=64),
-    dict(lvl=39, xp=0.91, rest=0.0, copper=1281544, free=0, slots=72),
-    dict(lvl=40, xp=0.40, rest=0.10, copper=8520, free=25, slots=80),
-    dict(lvl=40, xp=0.12, rest=0.45, copper=170099, free=7, slots=80),
+    dict(lvl=40, xp=0.62, rest=0.15, copper=521307, free=12, slots=80, buffs=[(4, "59m"), (0, "11m"), (2, "5m"), (3, "10m")]),
+    dict(lvl=40, xp=0.58, rest=0.30, copper=34012, free=3, slots=64, buffs=[(4, "59m"), (1, "28m"), (2, "2m")]),
+    dict(lvl=39, xp=0.91, rest=0.0, copper=1281544, free=0, slots=72, buffs=[(4, "58m"), (3, "40s")]),
+    dict(lvl=40, xp=0.40, rest=0.10, copper=8520, free=25, slots=80, buffs=[(4, "58m"), (2, "5m")]),
+    dict(lvl=40, xp=0.12, rest=0.45, copper=170099, free=7, slots=80, buffs=[(4, "58m")]),
 ]
 
 def team(lyra, others, lyra_focus=None):

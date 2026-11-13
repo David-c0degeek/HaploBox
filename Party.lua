@@ -1,5 +1,5 @@
 -- HaploBox party frame: one row per team member with health, power and follow status,
--- plus an info strip (level, XP, free bag slots, gold) and a team total footer.
+-- plus an info strip (level, XP, free bag slots, team buffs, gold) and a team total footer.
 -- Rows are secure unit buttons: left-click targets the member, and [@mouseover]
 -- macros work on them. Secure attributes and visibility only change out of combat.
 -- Health values may be secret on this client: they go straight into StatusBars and
@@ -30,6 +30,10 @@ local C = {
 }
 local BAG_ICON = "Interface\\Buttons\\Button-Backpack-Up"
 local FOOT_H = 22
+local XP_H = 9                 -- XP bar height (with the percentage inside)
+local BUFF_SIZE, BUFF_STEP = 20, 22
+local BUFF_MIN_DURATION = 60   -- only buffs of a minute or longer: skips procs, stances, aspects and auras
+local BUFF_WARN = 120          -- red border and timer from 2 minutes left
 
 local secret = function(v) return issecretvalue and issecretvalue(v) end
 local container, rows = nil, {}
@@ -117,8 +121,10 @@ local MIN_W, MAX_W, MIN_H, MAX_H = 150, 500, 28, 70
 local function rowW() return math.min(MAX_W, math.max(MIN_W, HB.db.teamW or 250)) end
 local function rowH() return math.min(MAX_H, math.max(MIN_H, HB.db.teamRowH or 38)) end
 -- the info strip below the bars: XP bar, then a line with free bag slots and gold
-local function showLine() return HB.db.teamShowGold or HB.db.teamShowBags end
-local function stripH() return (HB.db.teamShowXP and 6 or 0) + (showLine() and 15 or 0) end
+local function showTotals() return HB.db.teamShowGold or HB.db.teamShowBags end
+local function showLine() return showTotals() or HB.db.teamShowBuffs end
+local function lineH() return HB.db.teamShowBuffs and (BUFF_SIZE + 3) or 15 end
+local function stripH() return (HB.db.teamShowXP and (XP_H + 3) or 0) + (showLine() and lineH() or 0) end
 local function fullH() return rowH() + stripH() end
 
 -- ---------------------------------------------------------------- money
@@ -208,10 +214,14 @@ local function sizeRow(r)
 	local barH = math.max(6, H - 25)
 	r.health:SetSize(W - 12, barH)
 	r.power:SetSize(W - 12, math.max(3, math.floor(barH / 3)))
-	r.rested:SetSize(W - 12, 3)
+	r.rested:SetSize(W - 12, XP_H)
 	r.rested:SetShown(HB.db.teamShowXP and true or false)
+	local mid = lineH() / 2
+	r.bagIcon:ClearAllPoints()
+	r.bagIcon:SetPoint("LEFT", r, "BOTTOMLEFT", 6, mid)
 	r.moneyText:ClearAllPoints()
-	r.moneyText:SetPoint("BOTTOMRIGHT", r, "BOTTOMLEFT", W - 6, 3)
+	r.moneyText:SetPoint("RIGHT", r, "BOTTOMLEFT", W - 6, mid)
+	r.buffMax = math.max(1, math.floor((W - 120) / BUFF_STEP))
 	r.moneyText:SetShown(HB.db.teamShowGold and true or false)
 	r.bagIcon:SetShown(HB.db.teamShowBags and true or false)
 	r.bagText:SetShown(HB.db.teamShowBags and true or false)
@@ -266,10 +276,15 @@ local function createRow(i)
 	r.xp = bar(r.rested, C.xp, { 0, 0, 0, 0 })
 	r.xp:SetAllPoints(r.rested)
 	r.xp:SetFrameLevel(r.rested:GetFrameLevel() + 1)
+	r.xpText = r.xp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	r.xpText:SetPoint("CENTER", r.rested, "CENTER", 0, 0)
+	r.xpText:SetFont(r.xpText:GetFont(), 8, "OUTLINE")
 	r.bagIcon = r:CreateTexture(nil, "OVERLAY")
 	r.bagIcon:SetSize(12, 12)
 	r.bagIcon:SetTexture(BAG_ICON)
-	r.bagIcon:SetPoint("BOTTOMLEFT", r, "BOTTOMLEFT", 6, 2)
+	-- team buffs, centred on the bottom line; created when needed
+	r.buffs = {}
+	r.buffMore = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	r.bagText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	r.bagText:SetPoint("LEFT", r.bagIcon, "RIGHT", 3, 0)
 	r.moneyText = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -422,9 +437,11 @@ local function updateStats(r)
 		r.rested:SetValue(math.min(s.xpMax, s.xp + (s.rest or 0)))
 		r.xp:SetMinMaxValues(0, s.xpMax)
 		r.xp:SetValue(s.xp)
+		r.xpText:SetText(math.floor(s.xp / s.xpMax * 100) .. "%")
 		r.rested:SetAlpha(1)
 	else
 		r.rested:SetAlpha(0)  -- max level or unknown: keep the space, hide the bar
+		r.xpText:SetText("")
 	end
 	if s and s.free then
 		r.bagText:SetText(bagColor(s.free) .. s.free .. "|r")
@@ -434,6 +451,124 @@ local function updateStats(r)
 		r.bagIcon:SetAlpha(0.35)
 	end
 	r.moneyText:SetText(s and s.copper and HB.FormatMoney(s.copper, true) or "|cff777777-|r")
+end
+
+-- ---------------------------------------------------------------- buffs
+-- Buffs are read straight from the unit (no messages needed). Only buffs cast by a
+-- group member and lasting a minute or more are shown. On clients with secret
+-- values the aura data can be hidden in combat: then the last good list stays.
+local function buffButton(r, i)
+	local b = r.buffs[i]
+	if b then return b end
+	b = CreateFrame("Frame", nil, r)
+	b:SetSize(BUFF_SIZE, BUFF_SIZE)
+	b:EnableMouse(false)  -- clicks go through to the row (target the toon)
+	b.border = solid(b, "BACKGROUND", { 0.27, 0.28, 0.32, 1 })
+	b.border:SetPoint("TOPLEFT", -1, 1)
+	b.border:SetPoint("BOTTOMRIGHT", 1, -1)
+	b.tex = b:CreateTexture(nil, "ARTWORK")
+	b.tex:SetAllPoints()
+	b.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	b.time = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	b.time:SetPoint("BOTTOM", 0, 1)
+	b.time:SetFont(b.time:GetFont(), 9, "OUTLINE")
+	r.buffs[i] = b
+	return b
+end
+
+local function fromGroup(src)
+	if not src then return false end
+	local ok, v = pcall(function()
+		return UnitIsUnit(src, "player") or UnitInParty(src) or UnitInRaid(src) ~= nil
+	end)
+	return ok and v == true
+end
+
+local function readBuffs(u)
+	local list = {}
+	for i = 1, 40 do
+		local name, icon, duration, expires, source
+		if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+			local a = C_UnitAuras.GetAuraDataByIndex(u, i, "HELPFUL")
+			if not a then break end
+			name, icon, duration, expires, source = a.name, a.icon, a.duration, a.expirationTime, a.sourceUnit
+		elseif UnitBuff then
+			local _
+			name, icon, _, _, duration, expires, source = UnitBuff(u, i)
+			if not name then break end
+		else
+			break
+		end
+		if duration and duration >= BUFF_MIN_DURATION and fromGroup(source) then
+			list[#list + 1] = { icon = icon, expires = expires }
+		end
+	end
+	return list
+end
+
+local function timeLeft(expires)
+	local ok, left = pcall(function() return expires - GetTime() end)
+	if not ok or type(left) ~= "number" then return nil end
+	return left
+end
+
+local function fmtTime(left)
+	if left >= 3600 then return math.floor(left / 3600) .. "h" end
+	if left >= 60 then return math.floor(left / 60) .. "m" end
+	return math.max(0, math.floor(left)) .. "s"
+end
+
+local function updateBuffTimers(r)
+	for _, b in ipairs(r.buffs) do
+		if b:IsShown() then
+			local left = b.expires and timeLeft(b.expires)
+			if left then
+				local warn = left <= BUFF_WARN
+				b.time:SetText(fmtTime(left))
+				b.time:SetTextColor(1, warn and 0.35 or 1, warn and 0.3 or 1)
+				b.border:SetColorTexture(warn and 1 or 0.27, warn and 0.35 or 0.28, warn and 0.3 or 0.32, 1)
+			else
+				b.time:SetText("")
+			end
+		end
+	end
+end
+
+local function updateBuffs(r)
+	local show = HB.db.teamShowBuffs and r.unit and UnitExists(r.unit)
+	local list = {}
+	if show then
+		local ok, res = pcall(readBuffs, r.unit)
+		if not ok then return end  -- hidden right now: keep what is shown
+		list = res
+	end
+	local max = r.buffMax or 5
+	local n = #list
+	local shown = n > max and (max - 1) or n
+	local width = shown * BUFF_STEP - 2 + (n > shown and 20 or 0)
+	local x = rowW() / 2 - width / 2
+	local y = lineH() / 2
+	for i = 1, math.max(shown, #r.buffs) do
+		local b = i <= shown and buffButton(r, i) or r.buffs[i]
+		if i <= shown then
+			b.tex:SetTexture(list[i].icon)
+			b.expires = list[i].expires
+			b:ClearAllPoints()
+			b:SetPoint("LEFT", r, "BOTTOMLEFT", x + (i - 1) * BUFF_STEP, y)
+			b:Show()
+		elseif b then
+			b:Hide()
+		end
+	end
+	if n > shown then
+		r.buffMore:ClearAllPoints()
+		r.buffMore:SetPoint("LEFT", r, "BOTTOMLEFT", x + shown * BUFF_STEP, y)
+		r.buffMore:SetText("+" .. (n - shown))
+		r.buffMore:Show()
+	else
+		r.buffMore:Hide()
+	end
+	updateBuffTimers(r)
 end
 
 local function updateFooter()
@@ -460,7 +595,7 @@ local function updateFooter()
 end
 
 local function updateRow(r)
-	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateStats(r) updateRange(r)
+	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateStats(r) updateBuffs(r) updateRange(r)
 end
 
 function HB.RefreshPartyFrame()
@@ -495,7 +630,7 @@ local function sizeContainer()
 	local W, FH = rowW() + GAP + BOX_W, fullH()
 	local rowsH = n * (FH + GAP) - GAP
 	local ft = container.footer
-	ft:SetShown(showLine() and true or false)
+	ft:SetShown(showTotals() and true or false)
 	container:SetSize(W, rowsH + (ft:IsShown() and (GAP + FOOT_H) or 0))
 	for i, r in ipairs(rows) do
 		if r:IsShown() then
@@ -667,6 +802,7 @@ local unitEvents = {
 	UNIT_POWER_UPDATE = updatePower, UNIT_POWER_FREQUENT = updatePower,
 	UNIT_MAXPOWER = updatePower, UNIT_DISPLAYPOWER = updatePower,
 	UNIT_FLAGS = updateHealth,
+	UNIT_AURA = updateBuffs,
 }
 
 ev:SetScript("OnEvent", function(_, event, arg1)
@@ -678,8 +814,16 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 		createFooter()
 		createChrome()
 		HB.LayoutPartyFrame()
+		local tick = false
 		C_Timer.NewTicker(0.5, function()
-			if container:IsShown() then for _, r in ipairs(rows) do if r:IsShown() then updateRange(r) updateHealth(r) end end end
+			if not container:IsShown() then return end
+			tick = not tick
+			for _, r in ipairs(rows) do
+				if r:IsShown() then
+					updateRange(r) updateHealth(r)
+					if tick then updateBuffTimers(r) end  -- once a second
+				end
+			end
 		end)
 		return
 	end

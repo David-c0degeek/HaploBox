@@ -29,8 +29,9 @@ Each row is one character:
 - **Level and name**, the name in its class colour.
 - **Health bar** with a percentage, or `dead` / `offline`.
 - **Power bar** in the right colour for mana, rage or energy.
-- **XP bar** in purple, with rested XP as a blue extension. Hidden at max level.
+- **XP bar** in purple with the percentage on it, and rested XP as a blue extension. Hidden at max level.
 - **Free bag slots** (bottom left). Amber at 5 or fewer, red when the bags are full.
+- **Buffs** (bottom middle) cast by your group, with the time left on each icon. Only buffs of a minute or longer, so procs, stances and food stay out. A buff with 2 minutes or less turns red. When there is no room, `+2` shows how many more there are.
 - **Gold** (bottom right), kept short: `128g`, `52g 13s`, `85s 20c`.
 - **Focus** (crosshair, top right): the target that character has on focus. A dash means no focus.
 - **Status box** (right side): who that character is following.
@@ -99,7 +100,7 @@ You get a confirmation: `sent to Bob via Haplina Darkheart`. Whispers between yo
 - **Invites:** followers accept group invites from the leader.
 - **Quests:** when the leader accepts a quest, it is shared with the group and the followers accept it. A failed share plays a sound and tells you why. Prefer every character to share? Set **Share quests I accept** to `all` in the options panel.
 - **Loot:** the leader sets free-for-all loot when someone joins, or on demand with `/hb ffa`. WoW Forever has no `/ffa` command.
-- **Role checks:** group finder role checks are answered with each character's team role.
+- **Roles:** each character sets its own party role (tank, healer or damage) and its group finder roles from its team role, answers role polls and answers group finder role checks.
 - **Optional:** followers leave the group when the leader leaves.
 
 Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type `/hb options`).
@@ -110,8 +111,8 @@ Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type
 
 1. **Install** HaploBox on every account (see [Install](#install)).
 2. **Group up** with your team.
-3. On the **leader**, type `/hb team`. The current group becomes your team and is sent to every character.
-4. On the **healer**, type `/hb role healer`.
+3. On the **leader**, open the options (**Options > AddOns > HaploBox**) and click **Make this toon the leader**. The current group becomes your team and is sent to every character. (Or type `/hb team`.)
+4. On each character, pick its role in the same panel: **tank**, **healer** or **dps**. The toon with the healer role is the one followers can follow. (Or type `/hb role healer`.)
 
 That's all. The leader alert, the team frame and the automation now know who is who. Swapped a character? Group the new team and run `/hb team` again.
 
@@ -129,7 +130,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 |---|---|
 | `/hb team` | On the leader, in a party: make this group the team and send it to every character. |
 | `/hb team show` | List the team, the leader and the roles. |
-| `/hb role tank\|healer\|dps` | Set your role. It is sent to the group. |
+| `/hb role tank\|healer\|dps` | Set your role (also in the options panel). It is sent to the group. |
 | `/hb leader [name]` | Set the leader by hand (no name: your target). |
 | `/hb status` | Show the leader, your role and the loot method. |
 
@@ -140,7 +141,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb frame auto\|show\|hide` | Show the frame on this character: `auto` = only on the leader. |
 | `/hb frame lock\|unlock` | Lock it in place, or unlock it to move and resize. |
 | `/hb frame colors` | Turn class colours on or off. |
-| `/hb frame xp\|gold\|bags` | Show or hide level and XP, gold, or free bag slots. |
+| `/hb frame xp\|gold\|bags\|buffs` | Show or hide level and XP, gold, free bag slots, or buffs. |
 | `/hb frame scale 0.8` | Scale the whole frame (0.5 to 2). |
 | `/hb frame solo` | Also show the frame when you are not in a group. |
 | `/hb frame reset` | Put the frame back to its starting position and size. |

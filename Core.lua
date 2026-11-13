@@ -8,7 +8,7 @@ local HB = {}
 _G.HaploBox = HB
 
 local PREFIX = "HaploBox"
-local VERSION = "0.7.0"
+local VERSION = "0.8.0"
 
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
@@ -43,6 +43,8 @@ local DEFAULTS = {
 	teamShowXP          = true,   -- team frame: level and XP bar
 	teamShowGold        = true,   -- team frame: gold per toon and the team total
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
+	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
+	autoPartyRole       = true,   -- set my party and group finder role from my team role
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
 	forwardWhispers     = true,   -- followers: forward whispers from outside the team to the leader
 	relayReplies        = true,   -- followers: pass the leader's replies on to the last whisperer
@@ -265,6 +267,7 @@ local function applyTeam(leader, list)
 		HaploBoxTeam.roles[m.name] = m.role
 	end
 	refreshTeam()
+	if HB.ApplyRoles then C_Timer.After(0.5, HB.ApplyRoles) end
 end
 
 function HB.TeamSummary()
@@ -294,6 +297,25 @@ function HB.SetTeamFromGroup()
 	applyTeam(me, list)
 	send("M|" .. me .. "|" .. table.concat(wire, ";"))
 	print_("team set and sent: " .. HB.TeamSummary())
+end
+
+-- My role, from the options panel or /hb role: stored, sent to the group, applied.
+function HB.SetMyRole(r)
+	if r ~= "tank" and r ~= "healer" and r ~= "dps" then print_("role must be tank, healer or dps") return end
+	local me = clean(HB.UnitIdent("player"))
+	setRole(me, r)
+	send("R|" .. r .. "|" .. me)
+	refreshTeam()
+	if HB.ApplyRoles then HB.ApplyRoles() end
+	print_("role set to " .. r .. (IsInGroup() and " (sent to the group)" or ""))
+end
+
+-- This toon becomes the leader. In a party the whole group becomes the team (as /hb team).
+function HB.MakeMeLeader()
+	if IsInGroup() and not IsInRaid() then HB.SetTeamFromGroup() return end
+	HaploBoxTeam.leader = clean(HB.UnitIdent("player"))
+	refreshTeam()
+	print_("you are the leader. Group up and press it again (or /hb team) to send the team to every toon.")
 end
 
 local function onTeamMessage(sender, leader, body)
@@ -622,6 +644,7 @@ function handlers.PLAYER_ENTERING_WORLD()
 end
 
 function handlers.PLAYER_LOGIN()
+	C_Timer.After(2, HB.ApplyRoles)
 	local leader = HB.Leader()
 	if leader then
 		print_(VERSION .. " loaded. Leader: |cffffff00" .. leader .. "|r" .. (HB.IAmLeader() and " (you)" or ""))
@@ -673,7 +696,10 @@ function handlers.GROUP_ROSTER_UPDATE()
 	local size = IsInGroup() and GetNumGroupMembers() or 0
 	local grew = size > ffaGroupSize
 	ffaGroupSize = size
-	if grew then C_Timer.After(2, queryFollowStates) end
+	if grew then
+		C_Timer.After(2, queryFollowStates)
+		C_Timer.After(1.5, HB.ApplyRoles)
+	end
 	if grew and HB.db.autoFFA and HB.IAmLeader() and IsInGroup() and HB.IsFFA() ~= true then
 		C_Timer.After(1, function() HB.SetFFA(true) end)
 	end
@@ -826,6 +852,36 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	end
 end
 
+local GAME_ROLE = { tank = "TANK", healer = "HEALER", dps = "DAMAGER" }
+-- Party role icon and group finder roles from my team role.
+function HB.ApplyRoles()
+	if not HB.db.autoPartyRole then return end
+	local role = HB.MyRole()
+	local wanted = GAME_ROLE[role or ""]
+	if not wanted then return end
+	if SetLFGRoles then
+		local leaderFlag = GetLFGRoles and select(1, GetLFGRoles()) or false
+		pcall(SetLFGRoles, leaderFlag, role == "tank", role == "healer", role == "dps")
+	end
+	if IsInGroup() and UnitSetRole then
+		local ok, current = pcall(UnitGroupRolesAssigned or function() end, "player")
+		if not ok or secret(current) or current ~= wanted then
+			local done = pcall(UnitSetRole, "player", wanted)
+			debug("party role " .. wanted .. (done and "" or " failed"))
+		end
+	end
+end
+
+function handlers.ROLE_POLL_BEGIN()
+	if not HB.db.autoPartyRole or not GAME_ROLE[HB.MyRole() or ""] then return end
+	HB.ApplyRoles()
+	if RolePollPopup then
+		C_Timer.After(0.1, function()
+			if StaticPopupSpecial_Hide then pcall(StaticPopupSpecial_Hide, RolePollPopup) else RolePollPopup:Hide() end
+		end)
+	end
+end
+
 function handlers.LFG_ROLE_CHECK_SHOW()
 	if not HB.db.autoRoleCheck or not (SetLFGRoles and CompleteLFGRoleCheck) then return end
 	local role = HB.MyRole()
@@ -862,7 +918,7 @@ local function help()
 	print_("  /hb leader [name] - set the leader (no name: your target)")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
-	print_("  /hb role tank|healer|dps - your role (healer: follow arrows, role checks); sent to the group")
+	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")
 	print_("  /hb ffa - set free-for-all loot (group leader only)")
 	print_("  /hb share - share every quest in your log with the group")
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept whisperIn bagsFull mountOn mountOff")
@@ -870,7 +926,7 @@ local function help()
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
-	print_("  /hb frame xp | gold | bags - show or hide level and XP, gold, free bag slots")
+	print_("  /hb frame xp | gold | bags | buffs - show or hide level and XP, gold, free bag slots, buffs")
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
 	print_("  /hb who - show how the game names you and your target")
 	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
@@ -886,13 +942,7 @@ SlashCmdList.HAPLOBOX = function(input)
 		HaploBoxTeam.leader = name
 		print_("leader set to |cffffff00" .. name .. "|r")
 	elseif cmd == "role" then
-		local r = rest:lower()
-		if r ~= "tank" and r ~= "healer" and r ~= "dps" then print_("role must be tank, healer or dps") return end
-		local me = clean(HB.UnitIdent("player"))
-		setRole(me, r)
-		send("R|" .. r .. "|" .. me)
-		refreshTeam()
-		print_("role set to " .. r .. (IsInGroup() and " (sent to the group)" or ""))
+		HB.SetMyRole(rest:lower())
 	elseif cmd == "team" then
 		if rest:lower() == "show" then print_("team: " .. HB.TeamSummary()) return end
 		HB.SetTeamFromGroup()
@@ -954,15 +1004,15 @@ SlashCmdList.HAPLOBOX = function(input)
 		elseif a == "colors" or a == "colours" then
 			HB.db.teamClassColors = not HB.db.teamClassColors
 			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off"))
-		elseif a == "xp" or a == "gold" or a == "bags" then
-			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags" })[a]
+		elseif a == "xp" or a == "gold" or a == "bags" or a == "buffs" then
+			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags", buffs = "teamShowBuffs" })[a]
 			HB.db[key] = not HB.db[key]
 			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden"))
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
 			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
-				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|scale <n>|solo|reset")
+				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|buffs|scale <n>|solo|reset")
 			return
 		end
 		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end

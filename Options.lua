@@ -16,6 +16,8 @@ local TOGGLES = {
 	{ "teamShowXP", "Team frame: level and XP bar" },
 	{ "teamShowGold", "Team frame: gold per toon and team total" },
 	{ "teamShowBags", "Team frame: free bag slots per toon and team total" },
+	{ "teamShowBuffs", "Team frame: group buffs with timers" },
+	{ "autoPartyRole", "Set my party role and group finder role from my team role" },
 	{ "bagFullAlert", "Leader: message when a toon's bags are full" },
 	{ "forwardWhispers", "Forward whispers from outside the team to the leader" },
 	{ "relayReplies", "Pass the leader's replies on (leader whispers this toon, or /hb r)" },
@@ -56,6 +58,56 @@ function HB.CreateOptions()
 
 	local y = -60
 	local refreshers = {}
+
+	-- this toon: role and leader, no typing needed
+	local head = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	head:SetPoint("TOPLEFT", 16, y)
+	head:SetText("This toon")
+	y = y - 24
+	local roleLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	roleLabel:SetPoint("TOPLEFT", 20, y - 4)
+	roleLabel:SetText("My role:")
+	local roleBtns = {}
+	local prev
+	for _, r in ipairs({ "tank", "healer", "dps" }) do
+		local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+		b:SetSize(80, 22)
+		if prev then b:SetPoint("LEFT", prev, "RIGHT", 6, 0) else b:SetPoint("LEFT", roleLabel, "RIGHT", 12, 0) end
+		b:SetScript("OnClick", function()
+			HB.SetMyRole(r)
+			for _, f in ipairs(refreshers) do f() end
+		end)
+		roleBtns[r] = b
+		prev = b
+	end
+	refreshers[#refreshers + 1] = function()
+		local mine = HB.MyRole()
+		for r, b in pairs(roleBtns) do
+			b:SetText(r == mine and ("|cff33ff33" .. r:upper() .. "|r") or r)
+		end
+	end
+	y = y - 30
+	local leaderLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	leaderLabel:SetPoint("TOPLEFT", 20, y - 4)
+	local leaderBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	leaderBtn:SetSize(170, 22)
+	leaderBtn:SetPoint("TOPLEFT", 300, y)
+	leaderBtn:SetText("Make this toon the leader")
+	leaderBtn:SetScript("OnClick", function()
+		HB.MakeMeLeader()
+		for _, f in ipairs(refreshers) do f() end
+	end)
+	refreshers[#refreshers + 1] = function()
+		local l = HB.Leader()
+		leaderLabel:SetText("Leader: " .. (l and ("|cffffff00" .. l .. "|r" .. (HB.IAmLeader() and " (this toon)" or "")) or "|cffff5555none|r"))
+	end
+	y = y - 26
+	local teamHint = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	teamHint:SetPoint("TOPLEFT", 20, y - 2)
+	teamHint:SetWidth(560)
+	teamHint:SetJustifyH("LEFT")
+	teamHint:SetText("In a party, the leader button also makes the group the team and sends it to every toon. The healer is the toon with the healer role.")
+	y = y - 30
 
 	for _, t in ipairs(TOGGLES) do
 		local key, label = t[1], t[2]
