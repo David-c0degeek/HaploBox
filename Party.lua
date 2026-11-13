@@ -16,7 +16,8 @@ local C = {
 	healthBg = { 0.30, 0.17, 0.08, 0.90 },
 	power    = { 0.30, 0.55, 0.95 },
 	powerBg  = { 0.12, 0.14, 0.20, 0.90 },
-	ok       = { 0.17, 0.33, 0.20, 0.95 },
+	ok       = { 0.17, 0.33, 0.20, 0.95 },  -- following the leader
+	chain    = { 0.10, 0.30, 0.33, 0.95 },  -- following the healer or another toon (teal)
 	lead     = { 0.36, 0.30, 0.10, 0.95 },
 	paused   = { 0.55, 0.38, 0.08, 0.95 },
 	broken   = { 0.55, 0.16, 0.14, 0.95 },
@@ -373,7 +374,7 @@ local function updateStatus(r)
 	elseif HB.RoleOf(target) == "healer" then icon, label = "cross", "> HEAL"
 	else icon, label = "link", shortLabel(target) end
 	if chainMoving(target) then
-		setBox(r, C.ok, icon, label)
+		setBox(r, HB.IsLeaderName(target) and C.ok or C.chain, icon, label)
 	else
 		setBox(r, C.paused, "pause", label)
 	end

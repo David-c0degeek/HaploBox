@@ -45,8 +45,8 @@ Click a row to target that character. `[@mouseover]` macros work on the rows, so
 |---|---|
 | Gold, crown, **LEADER** | This is the leader. |
 | Green, crown, **> LEAD** | Following the leader. |
-| Green, cross, **> HEAL** | Following the healer. |
-| Green, link, **> NAME** | Following another character. |
+| Teal, cross, **> HEAL** | Following the healer. |
+| Teal, link, **> NAME** | Following another character. |
 | Red, broken link, **BROKEN** | Not following anyone. |
 | Amber, pause, **> NAME** | Still following, but someone further up the chain has stopped. |
 | Grey, **AWAY** | In the team, but not in your group. |

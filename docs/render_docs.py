@@ -22,7 +22,7 @@ BG = (17, 18, 22)
 ROW_BG = (41, 43, 51)
 POWER_BG = (31, 36, 51)
 BOX = {
-    "lead": (92, 77, 26), "ok": (43, 84, 51), "paused": (140, 97, 20),
+    "lead": (92, 77, 26), "ok": (43, 84, 51), "chain": (26, 77, 84), "paused": (140, 97, 20),
     "broken": (140, 41, 36), "away": (64, 64, 71),
 }
 CLASS = {
@@ -192,10 +192,10 @@ def save(img, name):
     print("wrote", name, img.size)
 
 # 1. hero: the team frame in "healer leads the pack" mode
-save(frame(team(("ok", "crown", "> LEAD"), ("ok", "cross", "> HEAL"))), "team-frame.png")
+save(frame(team(("ok", "crown", "> LEAD"), ("chain", "cross", "> HEAL"))), "team-frame.png")
 
 # 2. follow chain: before / after stopping the healer, side by side
-a = frame(team(("ok", "crown", "> LEAD"), ("ok", "cross", "> HEAL")), title="Healer follows you, team follows healer")
+a = frame(team(("ok", "crown", "> LEAD"), ("chain", "cross", "> HEAL")), title="Healer follows you, team follows healer")
 b = frame(team(("broken", "link-broken", "BROKEN"), ("paused", "pause", "> HEAL")), title="Stop the healer: the whole team waits")
 chain = Image.new("RGBA", (a.width + b.width + int(20 * K), max(a.height, b.height)), BG + (255,))
 chain.alpha_composite(a, (0, 0))
