@@ -35,6 +35,7 @@ local DEFAULTS = {
 	autoRoleCheck       = true,
 	autoFFA             = true,   -- leader sets free-for-all loot when the group changes
 	autoLeaveWithLeader = false,
+	followFlights       = true,   -- followers: fly to the leader's flight destination when their flight map opens
 	teamFrame           = "auto", -- team frame on this toon: "auto" (only if it is the leader), "show" or "hide"
 	partyFrameSolo      = false,  -- also show it when not in a group
 	partyScale          = 1,
@@ -814,6 +815,81 @@ function handlers.UI_ERROR_MESSAGE(_, msg)
 	end
 end
 
+-- ---------------------------------------------------------------- flights
+-- When the leader takes a flight, it sends the destination name ("P|<name>").
+-- A follower flies there as soon as its own flight map is open: right away when it
+-- already is, or when it opens within PENDING_FLIGHT seconds. Names are sent instead
+-- of node indexes, because the index list differs per toon (known flight paths).
+local PENDING_FLIGHT = 120
+local pendingFlight, pendingFlightUntil
+local taxiNames = {}  -- node index -> name, from the open flight map
+
+local function taxiNodes()
+	local list = {}
+	if NumTaxiNodes and TaxiNodeName then
+		for i = 1, NumTaxiNodes() do
+			local name = TaxiNodeName(i)
+			local kind = TaxiNodeGetType and TaxiNodeGetType(i)
+			if str(name) then list[#list + 1] = { index = i, name = name, ok = kind == nil or kind == "REACHABLE" } end
+		end
+	end
+	if #list == 0 and C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and GetTaxiMapID then
+		local ok, nodes = pcall(C_TaxiMap.GetAllTaxiNodes, GetTaxiMapID())
+		if ok and type(nodes) == "table" then
+			local reachable = Enum and Enum.FlightPathState and Enum.FlightPathState.Reachable
+			for _, n in ipairs(nodes) do
+				if str(n.name) and n.slotIndex then
+					list[#list + 1] = { index = n.slotIndex, name = n.name, ok = reachable == nil or n.state == reachable }
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function tryPendingFlight()
+	if not pendingFlight then return end
+	if GetTime() > pendingFlightUntil then pendingFlight = nil return end
+	if UnitOnTaxi and UnitOnTaxi("player") then pendingFlight = nil return end
+	local nodes = taxiNodes()
+	if #nodes == 0 then return end  -- flight map not open yet
+	local want = pendingFlight
+	pendingFlight = nil
+	for _, n in ipairs(nodes) do
+		if n.name == want then
+			if n.ok then
+				print_("flying with the leader to |cffffff00" .. want .. "|r")
+				TakeTaxiNode(n.index)
+			else
+				print_("|cffffaa00can't fly to " .. want .. ":|r not reachable from here")
+			end
+			return
+		end
+	end
+	print_("|cffffaa00can't fly to " .. want .. ":|r flight path not known")
+end
+
+function handlers.TAXIMAP_OPENED()
+	wipe(taxiNames)
+	for _, n in ipairs(taxiNodes()) do taxiNames[n.index] = n.name end
+	if pendingFlight then C_Timer.After(0.2, tryPendingFlight) end
+end
+
+local function onLeaderFlight(sender, dest)
+	if not HB.db.followFlights or not HB.IsLeaderName(sender) or not str(dest) then return end
+	pendingFlight, pendingFlightUntil = dest, GetTime() + PENDING_FLIGHT
+	debug("leader flies to " .. dest)
+	tryPendingFlight()
+end
+
+if TakeTaxiNode then
+	hooksecurefunc("TakeTaxiNode", function(index)
+		if not HB.db or not HB.IAmLeader() then return end
+		local name = taxiNames[index] or (TaxiNodeName and TaxiNodeName(index))
+		if str(name) then send("P|" .. name:gsub("|", "")) end
+	end)
+end
+
 function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	if prefix ~= PREFIX or secret(msg) or secret(sender) then return end
 	if HB.Norm(sender) == HB.Norm(HB.UnitIdent("player")) then return end
@@ -822,6 +898,7 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, _, sender)
 	if head == "W|" then onWhisperForward(sender, msg) return end
 	if head == "Y|" then onReplyRequest(sender, msg) return end
 	if head == "S|" then onStats(sender, select(2, strsplit("|", msg))) return end
+	if head == "P|" then onLeaderFlight(sender, msg:sub(3)) return end
 	local kind, code, arg = strsplit("|", msg)
 	if kind == "K" then onRelayResult(sender, code, arg) return end
 	if kind == "F" and code == "?" then

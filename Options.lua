@@ -11,6 +11,7 @@ local TOGGLES = {
 	{ "autoFFA", "Leader: set free-for-all loot when the group changes" },
 	{ "autoRoleCheck", "Answer group finder role checks with my team role" },
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
+	{ "followFlights", "Fly to the leader's flight destination when my flight map opens" },
 	{ "teamLocked", "Team frame: lock in place (unlock to move and resize)" },
 	{ "teamClassColors", "Team frame: class colours" },
 	{ "teamShowXP", "Team frame: level and XP bar" },

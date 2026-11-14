@@ -102,6 +102,7 @@ You get a confirmation: `sent to Bob via Haplina Darkheart`. Whispers between yo
 - **Loot:** the leader sets free-for-all loot when someone joins, or on demand with `/hb ffa`. WoW Forever has no `/ffa` command.
 - **Roles:** each character sets its own party role (tank, healer or damage) and its group finder roles from its team role, answers role polls and answers group finder role checks.
 - **Quest tracker:** Blizzard's quest tracker is hidden, which keeps five screens tidy. Turn it back on with `/hb tracker` or the options panel.
+- **Flights:** when the leader takes a flight, each follower flies to the same place as soon as it opens its own flight map (within 2 minutes). Followers that do not know that flight path get a message instead.
 - **Optional:** followers leave the group when the leader leaves.
 
 Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type `/hb options`).
