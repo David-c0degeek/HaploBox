@@ -16,9 +16,9 @@ Multiboxing goes wrong in small, silent ways. A follower snags on a fence post. 
 |---|---|
 | **See the team** | One compact frame: health, power, XP, free bag slots, gold, focus target and follow status for every character. |
 | **Hear problems** | A follower that stops following triggers a raid warning on the leader's screen. |
-| **Never miss a whisper** | Whispers to any follower show up on the leader, and you can answer from there. |
+| **Never miss a whisper** | Character whispers to any follower show up on the leader, and you can answer from there. |
 | **Skip the busywork** | Invites, quest sharing, free-for-all loot and role checks are handled automatically. |
-| **Stay safe** | No protected or Edit Mode frames are touched, so the addon cannot taint your UI. |
+| **Stay safe** | Only your own team can steer your characters, and forwarded whispers stay between the follower and the leader. HaploBox changes its secure frames only out of combat and avoids known taint paths. |
 
 ---
 
@@ -36,9 +36,11 @@ Each row is one character:
 - **Focus** (crosshair, top right): the target that character has on focus. A dash means no focus.
 - **Status box** (right side): who that character is following.
 
-The **TEAM** line at the bottom adds it all up: free bag slots and the gold of the whole team. When a character has not reported yet (an older HaploBox, or not logged in), its row shows a dash and the total says `3 of 5`.
+The **TEAM** line at the bottom adds it all up: free bag slots and the gold of the whole team. When a character has not reported yet (an older HaploBox, not logged in, or not in the team list), its row shows a dash and the total says `3 of 5`.
 
 Click a row to target that character. `[@mouseover]` macros work on the rows, so your healer can heal straight from the frame. Characters out of range fade.
+
+WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
 
 ### Status box
 
@@ -60,7 +62,7 @@ Plenty of multiboxers let only the healer follow the leader and have everyone el
 
 ### Move, resize and lock
 
-The frame starts unlocked. Drag the bar on top (or any row) to move it, and drag the corner to resize it. Click **Lock** when you are happy with it. To move it again later, type `/hb frame unlock`.
+The frame starts unlocked. Drag the bar on top (or any row) to move it, and drag the corner to resize it. Click **Lock** when you are happy with it. While it is unlocked, the bar also has a **Send team** button: it makes the current group the team and sends it to every character, like `/hb team`. To move it again later, type `/hb frame unlock`.
 
 ![The unlocked frame with its drag bar, Lock button and resize corner](docs/unlocked.png)
 
@@ -80,7 +82,7 @@ Followers also send their cast errors (out of range, no line of sight, out of ma
 
 ## Never miss a whisper
 
-Someone whispers your warlock while you play the druid. HaploBox puts the whisper in the leader's chat, with the name of the character that got it:
+Someone whispers your warlock while you play the druid. HaploBox puts the whisper in the leader's chat, with the name of the character that got it. This covers character whispers; Battle.net whispers are not forwarded.
 
 ```
 [Haplina Darkheart] Bob whispers: are you selling that cloth?
@@ -89,23 +91,25 @@ Someone whispers your warlock while you play the druid. HaploBox puts the whispe
 Answer in one of two ways:
 
 - `/hb r sure, 2g a stack` sends the reply through the character that got the last whisper.
-- Or whisper that character directly (`/w Haplina Darkheart sure, 2g a stack`). For 5 minutes after a forwarded whisper, it passes your whispers on to Bob.
+- Or whisper that character directly (`/w Haplina Darkheart sure, 2g a stack`). For 5 minutes after Bob's last whisper, it passes your whispers on to Bob. Replying does not extend that time; after it, use `/hb r`.
 
-You get a confirmation: `sent to Bob via Haplina Darkheart`. Whispers between your own characters are never forwarded, and GM whispers are marked `<GM>`.
+You get a confirmation: `reply passed to Haplina Darkheart for Bob`. The game does not confirm that a whisper arrived. When the game reports within a second that Bob is offline, you get `Haplina Darkheart could not whisper Bob` instead; a missing warning does not prove the whisper arrived. Whispers between your own characters are never forwarded, and GM whispers are marked `<GM>`.
+
+Forwarded whispers and replies go privately between the follower and the leader, never to the rest of the group. This needs HaploBox 0.9.0 or later on every character: older versions still send them over the group channel. Turn off **Pass the leader's replies on** on a character, and it relays neither `/hb r` replies nor direct whispers.
 
 ---
 
 ## Automation
 
 - **Invites:** followers accept group invites from the leader.
-- **Quests:** when the leader accepts a quest, it is shared with the group and the followers accept it. A failed share plays a sound and tells you why. Prefer every character to share? Set **Share quests I accept** to `all` in the options panel.
+- **Quests:** when the leader accepts a quest, it is shared with the group and the followers accept it. Followers accept shared quests only from your team, not from other players in the group. A failed share plays a sound and tells you why. Prefer every character to share? Set **Share quests I accept** to `all` in the options panel.
 - **Loot:** the leader sets free-for-all loot when someone joins, or on demand with `/hb ffa`. WoW Forever has no `/ffa` command.
 - **Roles:** each character sets its own party role (tank, healer or damage) and its group finder roles from its team role, answers role polls and answers group finder role checks.
 - **Quest tracker:** Blizzard's quest tracker is hidden, which keeps five screens tidy. Turn it back on with `/hb tracker` or the options panel.
 - **Flights:** when the leader takes a flight, each follower flies to the same place as soon as it opens its own flight map (within 2 minutes). Followers that do not know that flight path get a message instead.
 - **Optional:** followers leave the group when the leader leaves.
 
-Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type `/hb options`).
+Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type `/hb options`). The frame scale and debug output are set with `/hb frame scale` and `/hb debug`.
 
 ---
 
@@ -114,11 +118,12 @@ Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type
 1. **Install** HaploBox on every account (see [Install](#install)).
 2. **Group up** with your team.
 3. On the **leader**, open the options (**Options > AddOns > HaploBox**) and click **Make this toon the leader**. The current group becomes your team and is sent to every character. (Or type `/hb team`.)
-4. On each character, pick its role in the same panel: **tank**, **healer** or **dps**. The toon with the healer role is the one followers can follow. (Or type `/hb role healer`.)
+4. Each follower shows a popup: **Haplo wants to lead your team**. Click **Accept** on each one (one click if you mirror clicks to all windows). A character only takes a team from the leader it already knows, so nobody else in your group can take over your characters. (Or type `/hb accept`, or use the key binding.)
+5. On each character, pick its role in the same panel: **tank**, **healer** or **dps**. The toon with the healer role is the one followers can follow. (Or type `/hb role healer`.)
 
-That's all. The leader alert, the team frame and the automation now know who is who. Swapped a character? Group the new team and run `/hb team` again.
+That's all. The leader alert, the team frame and the automation now know who is who. Swapped a character? Group the new team and click **Make this toon the leader** (or **Send team** on the frame, or `/hb team`) again; followers that already know the leader take it without a popup. Changed the leader? Each follower accepts the popup once.
 
-> Using the `multibox-team-setup` skill? It writes the team for you, along with macros, keybindings and settings, so you can skip steps 3 and 4.
+> Using the `multibox-team-setup` skill? It writes the team for you, along with macros, keybindings and settings, so you can skip steps 3 to 5.
 
 ---
 
@@ -134,6 +139,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb team show` | List the team, the leader and the roles. |
 | `/hb role tank\|healer\|dps` | Set your role (also in the options panel). It is sent to the group. |
 | `/hb leader [name]` | Set the leader by hand (no name: your target). |
+| `/hb accept` | Accept the team that a new leader sent. |
 | `/hb status` | Show the leader, your role and the loot method. |
 
 **Team frame**
@@ -161,6 +167,19 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb who` | Show how the game names you and your target. |
 | `/hb options` | Open the options panel. |
 | `/hb debug` | Toggle debug output. |
+
+---
+
+## Key bindings
+
+Prefer keys to typing? Bind them under **Esc > Options > Keybindings > AddOns > HaploBox**. If you send key presses to all characters at once, one press sets up the whole team.
+
+| Binding | What it does |
+|---|---|
+| Make this toon the leader and send the team | Same as the options button or `/hb team`. |
+| Accept the team offered by a new leader | Same as **Accept** in the popup or `/hb accept`. |
+| Make my target the leader | Same as `/hb leader` with the leader targeted. |
+| My role: tank / healer / dps | Same as the role buttons or `/hb role`. |
 
 ---
 
@@ -201,13 +220,16 @@ mklink /J "C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns\H
 
 `/reload` picks up Lua changes. New files (textures, sounds) need a game restart.
 
+To check changes outside the game, run `python tests/run.py` (needs `pip install lupa`). It compiles every Lua file under Lua 5.1 and runs the behaviour tests in `tests/` against stubbed WoW APIs.
+
 ---
 
 ## Under the hood
 
-- **Communication:** every character talks over a hidden addon channel (`HaploBox`) in party or raid. Nothing appears in chat.
+- **Communication:** every character talks over a hidden addon channel (`HaploBox`) in party or raid. Nothing appears in chat. Messages wait in a short queue so that a whole team logging in at once stays under the game's limit for addon messages.
+- **Trust:** a character takes a team only from the leader it already has, or after `/hb accept`. Invites, flights and reply relays come only from that leader, and follow, focus, stats and error reports count only from team members.
 - **Each character reports itself:** follow state, follow target, focus, level, XP, gold and bag space are sent when they change (stats at most once a second), and again when someone joins or logs in. The game only gives these numbers for your own character, so every character needs HaploBox, ideally the same version.
-- **Whispers:** a follower forwards a whisper over the same hidden channel. Long whispers are split into parts and joined again on the leader. If the game hides a whisper's text from addons, the leader still sees who whispered.
+- **Whispers:** a follower forwards a whisper to the leader as a private addon whisper, not to the group. Long whispers are split into parts and joined again on the leader. If the game hides a whisper's text from addons, the leader still sees who whispered.
 - **Secret values:** newer clients can hide health values from addons. HaploBox only passes them to status bars and text, never to its own calculations, so it keeps working where other frames throw errors.
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.
 - **Settings:** stored per account in `HaploBoxDB`. The team (leader, roles, order) is stored in `HaploBoxTeam`.

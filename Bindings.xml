@@ -1,0 +1,22 @@
+<!-- HaploBox key bindings: Esc > Options > Keybindings > AddOns > HaploBox.
+     The names shown in that menu are the BINDING_NAME_ globals in Core.lua. -->
+<Bindings>
+	<Binding name="HAPLOBOX_LEAD" header="HAPLOBOX" category="ADDONS">
+		HaploBox.MakeMeLeader()
+	</Binding>
+	<Binding name="HAPLOBOX_ACCEPT" category="ADDONS">
+		HaploBox.AcceptTeam()
+	</Binding>
+	<Binding name="HAPLOBOX_TARGET_LEADER" category="ADDONS">
+		HaploBox.SetLeaderName(HaploBox.UnitIdent("target"))
+	</Binding>
+	<Binding name="HAPLOBOX_ROLE_TANK" category="ADDONS">
+		HaploBox.SetMyRole("tank")
+	</Binding>
+	<Binding name="HAPLOBOX_ROLE_HEALER" category="ADDONS">
+		HaploBox.SetMyRole("healer")
+	</Binding>
+	<Binding name="HAPLOBOX_ROLE_DPS" category="ADDONS">
+		HaploBox.SetMyRole("dps")
+	</Binding>
+</Bindings>

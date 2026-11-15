@@ -1,5 +1,14 @@
-"""Render README visuals for HaploBox from the addon's real layout numbers and icons."""
-import os, sys
+"""Render README visuals for HaploBox from the addon's real layout numbers and icons.
+
+Usage: python docs/render_docs.py <path to the HaploBox repository>
+Needs Pillow, the Segoe UI fonts in C:/Windows/Fonts, Media/*.tga and
+concept/buffs.png. Writes docs/*.png.
+
+The layout numbers and colours below are copied from Party.lua (row height 38,
+XP_H 9, BUFF_SIZE 20, FOOT_H 22, the box colours in C). Change both together.
+"""
+import os
+import sys
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 REPO = sys.argv[1]
@@ -61,7 +70,7 @@ def icon(name, size, color=(255, 255, 255), alpha=1.0):
     if key not in ICONS:
         im = Image.open(os.path.join(REPO, "Media", name + ".tga")).convert("RGBA")
         im = im.resize((int(size * K), int(size * K)), Image.LANCZOS)
-        r, g, b, a = im.split()
+        _, _, _, a = im.split()
         a = a.point(lambda v: int(v * alpha))
         solid = Image.new("RGBA", im.size, color + (255,))
         solid.putalpha(a)
@@ -149,7 +158,6 @@ def row(img, x, y, m):
         text(d, (hx + hw / 2, xy + XPH / 2), label, F_TINY, (255, 255, 255), "mm")
     ly = y + ROW_H - 11.5
     if m.get("buffs"):
-        img.alpha_composite(Image.new("RGBA", (1, 1)), (0, 0))
         buffs(img, d, x + ROW_W / 2, ly, m["buffs"])
     bag(d, hx, ly, m.get("free", 0), F_TINY)
     money(d, hx + hw, ly, m.get("copper", 0), F_TINY)
@@ -213,7 +221,6 @@ def team(lyra, others, lyra_focus=None):
     ]
 
 def save(img, name):
-    img = img.resize((img.width // K * 1, img.height // K * 1), Image.LANCZOS) if False else img
     img.convert("RGB").save(os.path.join(OUT, name), optimize=True)
     print("wrote", name, img.size)
 

@@ -35,7 +35,7 @@ local BUFF_SIZE, BUFF_STEP = 20, 22
 local BUFF_MIN_DURATION = 60   -- only buffs of a minute or longer: skips procs, stances, aspects and auras
 local BUFF_WARN = 120          -- red border and timer from 2 minutes left
 
-local secret = function(v) return issecretvalue and issecretvalue(v) end
+local secret = HB.secret
 local container, rows = nil, {}
 local unitRow = {}          -- unit token -> row
 local pendingLayout = false
@@ -53,11 +53,12 @@ function HB.TeamOrder()
 		for _, n in ipairs(team.order) do add(n) end
 	else
 		add(HB.Leader())
-		local rank = { tank = 1, healer = 2, dps = 3 }
+		local rank = {}
+		for i, role in ipairs(HB.ROLES) do rank[role] = i end
 		local names = {}
 		for n in pairs(team.roles or {}) do names[#names + 1] = n end
 		table.sort(names, function(a, b)
-			local ra, rb = rank[team.roles[a]] or 4, rank[team.roles[b]] or 4
+			local ra, rb = rank[team.roles[a]] or #HB.ROLES + 1, rank[team.roles[b]] or #HB.ROLES + 1
 			if ra ~= rb then return ra < rb end
 			return a < b
 		end)
@@ -169,6 +170,7 @@ local function classColor(file)
 end
 
 local function updateColors(r)
+	if r.stale then return end
 	local cr, cg, cb
 	if HB.db.teamClassColors then cr, cg, cb = classColor(classFileFor(r)) end
 	if not cr then cr, cg, cb = C.health[1], C.health[2], C.health[3] end
@@ -336,6 +338,38 @@ local function shortLabel(name)
 	return "> " .. n:upper()
 end
 
+-- ---------------------------------------------------------------- stale rows
+-- Rows are bound to unit tokens (party1, ...), and that binding can only change out of
+-- combat. When the group changes in combat, a row whose token now points at someone
+-- else is shown as stale (dim, "?", no bars) until the layout runs after combat.
+-- Every update below leaves a stale row alone, so the warning stays up.
+local function showStale(r)
+	r.nameText:SetText("|cff999999?|r")
+	r.health:SetMinMaxValues(0, 1) r.health:SetValue(0)
+	r.pctText:SetText("")
+	r.power:SetMinMaxValues(0, 1) r.power:SetValue(0)
+	r.rested:SetAlpha(0)
+	r.xpText:SetText("")
+	for _, b in ipairs(r.buffs) do b:Hide() end
+	r.buffMore:Hide()
+	r.focusText:SetText("")
+	r.focusIcon:SetAlpha(0)
+	r.bagText:SetText("")
+	r.bagIcon:SetAlpha(0)
+	r.moneyText:SetText("")
+	setBox(r, C.unknown, nil, "?")
+	r:SetAlpha(0.35)
+end
+
+local function markStaleRows()
+	for _, r in ipairs(rows) do
+		if r:IsShown() and r.unit and not r.stale and HB.Norm(HB.UnitIdent(r.unit)) ~= HB.Norm(r.name) then
+			r.stale = true
+			showStale(r)
+		end
+	end
+end
+
 -- ---------------------------------------------------------------- updates
 local function safe(fn, ...)
 	local ok, v = pcall(fn, ...)
@@ -343,6 +377,7 @@ local function safe(fn, ...)
 end
 
 local function updateHealth(r)
+	if r.stale then return end
 	local u = r.unit
 	if not u or not UnitExists(u) then
 		r.health:SetMinMaxValues(0, 1) r.health:SetValue(0)
@@ -367,6 +402,7 @@ local function updateHealth(r)
 end
 
 local function updatePower(r)
+	if r.stale then return end
 	local u = r.unit
 	if not u or not UnitExists(u) then r.power:SetMinMaxValues(0, 1) r.power:SetValue(0) return end
 	local _, token = UnitPowerType(u)
@@ -377,6 +413,7 @@ local function updatePower(r)
 end
 
 local function updateStatus(r)
+	if r.stale then return end
 	if HB.IsLeaderName(r.name) then setBox(r, C.lead, "crown", "LEADER") return end
 	if not r.unit then setBox(r, C.unknown, nil, "AWAY") return end
 	local k = HB.Norm(r.name)
@@ -396,6 +433,7 @@ local function updateStatus(r)
 end
 
 local function updateRange(r)
+	if r.stale then return end
 	local u = r.unit
 	if not u then r:SetAlpha(0.45) return end
 	if u == "player" then r:SetAlpha(1) return end
@@ -411,6 +449,7 @@ local function updateRange(r)
 end
 
 local function updateFocus(r)
+	if r.stale then return end
 	local f = HB.focus and HB.focus[HB.Norm(r.name)]
 	-- size the text to its content so the crosshair sits right before the name
 	r.focusText:SetWidth(0)
@@ -429,6 +468,7 @@ local function bagColor(free)
 end
 
 local function updateStats(r)
+	if r.stale then return end
 	local s = HB.stats and HB.stats[HB.Norm(r.name)]
 	local lvl = HB.db.teamShowXP and s and s.lvl
 	r.nameText:SetText((lvl and ("|cffffdc78" .. lvl .. "|r ") or "") .. displayName(r.name))
@@ -535,6 +575,7 @@ local function updateBuffTimers(r)
 end
 
 local function updateBuffs(r)
+	if r.stale then return end
 	local show = HB.db.teamShowBuffs and r.unit and UnitExists(r.unit)
 	local list = {}
 	if show then
@@ -675,6 +716,7 @@ local function updateLockUI()
 	local unlocked = not HB.db.teamLocked
 	container.handle:SetShown(unlocked)
 	container.grip:SetShown(unlocked)
+	container.sendButton:SetText(HB.IAmLeader() and "Send team" or "Lead team")
 end
 
 function HB.SetTeamFrameLocked(locked)
@@ -696,12 +738,26 @@ local function createChrome()
 	solid(h, "BACKGROUND", { 0.10, 0.11, 0.13, 0.95 }):SetAllPoints()
 	local t = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	t:SetPoint("LEFT", 6, 0)
-	t:SetText("HaploBox team - drag to move")
+	t:SetText("drag to move")
 	local lock = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
 	lock:SetSize(48, 16)
 	lock:SetPoint("RIGHT", -2, 0)
 	lock:SetText("Lock")
 	lock:SetScript("OnClick", function() HB.SetTeamFrameLocked(true) end)
+	-- Send team: the same as "Make this toon the leader" (and /hb team in a party)
+	local send = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
+	send:SetSize(80, 16)
+	send:SetPoint("RIGHT", lock, "LEFT", -4, 0)
+	send:SetScript("OnClick", function() HB.MakeMeLeader() end)
+	send:SetScript("OnEnter", function(self)
+		if not GameTooltip then return end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(HB.IAmLeader() and "Make this group the team and send it to every toon"
+			or "Make this toon the leader and send the team")
+		GameTooltip:Show()
+	end)
+	send:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+	container.sendButton = send
 	container.handle = h
 
 	local g = CreateFrame("Button", nil, container)
@@ -746,7 +802,11 @@ end
 
 function HB.LayoutPartyFrame()
 	if not container then return end
-	if InCombatLockdown() then pendingLayout = true return end
+	if InCombatLockdown() then
+		pendingLayout = true
+		markStaleRows()
+		return
+	end
 	pendingLayout = false
 	container:SetScale(HB.db.partyScale or 1)
 	if not wanted() then container:Hide() return end
@@ -757,6 +817,7 @@ function HB.LayoutPartyFrame()
 		local r = rows[i] or createRow(i)
 		rows[i] = r
 		r.name = name
+		r.stale = nil
 		r.unit = unitForName(name)
 		r:SetAttribute("unit", r.unit)
 		r.nameText:SetText(displayName(name))
@@ -831,11 +892,15 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 	local fn = unitEvents[event]
 	if fn then
 		local r = arg1 and unitRow[arg1]
-		if r and r:IsShown() then pcall(fn, r) end
+		if r and r:IsShown() then
+			local ok, err = pcall(fn, r)
+			if not ok then HB.debug(event .. ": " .. tostring(err)) end
+		end
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		if pendingLayout then HB.LayoutPartyFrame() end
-	else  -- GROUP_ROSTER_UPDATE, PLAYER_ENTERING_WORLD, UNIT_NAME_UPDATE
-		HB.LayoutPartyFrame()
+	elseif event ~= "UNIT_NAME_UPDATE" or arg1 == "player"
+		or (type(arg1) == "string" and (arg1:match("^party%d$") or arg1:match("^raid%d+$"))) then
+		HB.LayoutPartyFrame()  -- GROUP_ROSTER_UPDATE, PLAYER_ENTERING_WORLD, a group member's name
 	end
 end)
 for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_ENABLED", "GROUP_ROSTER_UPDATE", "PLAYER_ENTERING_WORLD", "UNIT_NAME_UPDATE" }) do

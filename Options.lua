@@ -13,6 +13,7 @@ local TOGGLES = {
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
 	{ "followFlights", "Fly to the leader's flight destination when my flight map opens" },
 	{ "teamLocked", "Team frame: lock in place (unlock to move and resize)" },
+	{ "partyFrameSolo", "Team frame: also show it when not in a group" },
 	{ "teamClassColors", "Team frame: class colours" },
 	{ "teamShowXP", "Team frame: level and XP bar" },
 	{ "teamShowGold", "Team frame: gold per toon and team total" },
@@ -71,7 +72,7 @@ function HB.CreateOptions()
 	roleLabel:SetText("My role:")
 	local roleBtns = {}
 	local prev
-	for _, r in ipairs({ "tank", "healer", "dps" }) do
+	for _, r in ipairs(HB.ROLES) do
 		local b = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
 		b:SetSize(80, 22)
 		if prev then b:SetPoint("LEFT", prev, "RIGHT", 6, 0) else b:SetPoint("LEFT", roleLabel, "RIGHT", 12, 0) end
@@ -108,8 +109,8 @@ function HB.CreateOptions()
 	teamHint:SetPoint("TOPLEFT", 20, y - 2)
 	teamHint:SetWidth(560)
 	teamHint:SetJustifyH("LEFT")
-	teamHint:SetText("In a party, the leader button also makes the group the team and sends it to every toon. The healer is the toon with the healer role.")
-	y = y - 30
+	teamHint:SetText("In a party, the leader button also makes the group the team and sends it to every toon. Each follower types /hb accept the first time. The healer is the toon with the healer role.")
+	y = y - 40
 
 	for _, t in ipairs(TOGGLES) do
 		local key, label = t[1], t[2]
