@@ -153,6 +153,8 @@ local frameMethods = {
 	SetAttribute = function(self, k, v) self.attrs = self.attrs or {} self.attrs[k] = v end,
 	SetScript = function(self, k, fn) self.scripts = self.scripts or {} self.scripts[k] = fn end,
 	IsProtected = function() return false end,
+	SetChecked = function(self, v) self.checked = v and true or false end,
+	GetChecked = function(self) return self.checked end,
 }
 local events = {}
 local newFrame

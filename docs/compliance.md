@@ -58,7 +58,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | Accept shared quest | A team member shares a quest | `AcceptQuest` on the follower | Team member shares | Shares from outsiders are not accepted | Kept |
 | Role check answer | Game role check | Answer with the stored team role | Group finder | Not affected | Kept |
 | Party role icon | Team change, roster change | Set own role | None (own state only) | Not affected | Kept |
-| Free-for-all loot | Roster or team change, `/hb ffa` | Loot method, leader | Roster change; `/hb ffa` | Never free for all; switches free for all to group loot; `/hb ffa` refused | Changed for #7 |
+| Free-for-all loot | Roster or team change, `/hb ffa` | Loot method, leader | Roster change; `/hb ffa` | Switches free for all to group loot, unless the leader picked free for all by hand; `/hb ffa` warns | Changed for #7 |
 | Leave with leader | Leader leaves the group | `LeaveParty` on the follower | Leader leaves | Only when the stored leader leaves | Off by default; kept |
 | Follow flights | Leader takes a flight (`P`) | `TakeTaxiNode` on the follower, once its flight map is open | Leader's flight; follower opens its map | Only from the stored leader | Owner decision: kept |
 | Release / Rezz team | Leader clicks the buttons (`D`) | `RepopMe`, `AcceptResurrect`, `RetrieveCorpse` on the follower | Leader's click | Only from the stored leader | Owner decision: kept |
@@ -90,7 +90,12 @@ research. UI-only work (#6, #9 to #14) does not depend on these decisions.
   a same-size replacement is caught.
 - Team: free for all, once per new roster or team. A method picked by hand stays
   until the group or team changes.
-- Mixed: free for all becomes group loot on every check, and `/hb ffa` is refused.
+- Mixed: free for all becomes group loot, unless the leader picked the method by
+  hand (owner decision, 2026-11-16: "if I set it myself HaploBox shouldn't
+  overwrite"). By hand means `/hb ffa`, or a change in Blizzard's menu after a
+  HaploBox change had taken effect; a request the server has not applied yet
+  does not count. `/hb ffa` with outsiders present works and warns.
+- The by-hand choice lasts until the group ends or a new team-only roster forms.
 - Uncertain: nothing changes; it looks again every 2 seconds, up to 15 times, and
   again on the next roster change.
 - Only the HaploBox leader who is also the group leader acts. The result is read

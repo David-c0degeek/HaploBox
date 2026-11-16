@@ -62,6 +62,8 @@ local DEFAULTS = {
 	debug               = false,
 }
 
+HB.DEFAULTS = DEFAULTS
+
 local SOUND_FALLBACK = {  -- SOUNDKIT ids from the 1.x client, used if the constant is missing
 	IG_QUEST_LIST_OPEN = 875, IG_QUEST_LIST_CLOSE = 876, RAID_WARNING = 8959,
 	READY_CHECK = 8960, IG_QUEST_FAILED = 847, IG_PLAYER_INVITE = 880, TELL_MESSAGE = 3081,
@@ -365,6 +367,12 @@ function HB.IsFFA()
 	return m == "freeforall"
 end
 
+-- lootLastSet: the method HaploBox last asked for; lootApplied: the game has shown
+-- it since. lootSeen: the method the last check saw. lootByHand: the leader picked
+-- a method since (Blizzard's menu or /hb ffa); HaploBox then leaves the method
+-- alone until the group ends or turns team-only with a new roster.
+local lootLastSet, lootApplied, lootSeen, lootByHand = nil, false, nil, false
+
 -- Asks the game for a loot method. The result is checked a moment later, because a
 -- call that does not fail can still be turned down by the server.
 local function setLootMethod(method, quiet)
@@ -374,7 +382,10 @@ local function setLootMethod(method, quiet)
 		if not quiet then print_("only the group leader can change the loot method") end
 		return
 	end
-	if lootMethod() == method then if not quiet then print_("loot is already " .. label) end return end
+	if lootMethod() == method then
+		if not quiet then print_("loot is already " .. label) end
+		return true  -- nothing to ask for, but the request was allowed
+	end
 	local tries = {}
 	local enum = Enum and Enum.LootMethod and Enum.LootMethod[LOOT_ENUM[method]]
 	if C_PartyInfo and C_PartyInfo.SetLootMethod then
@@ -386,9 +397,11 @@ local function setLootMethod(method, quiet)
 		local ok, r = pcall(fn)
 		debug("SetLootMethod " .. method .. " try " .. i .. ": " .. tostring(ok) .. " " .. tostring(r))
 		if ok and r ~= false then
+			lootLastSet, lootApplied = method, false
 			C_Timer.After(1.5, function()
 				local now = lootMethod()
 				if now == method then
+					if lootLastSet == method then lootApplied = true end
 					print_("loot set to " .. label)
 				elseif now == nil then
 					print_("asked for " .. label .. "; this client cannot show whether it changed")
@@ -408,25 +421,23 @@ local function outsiderText(outsiders)
 	return table.concat(names, ", ")
 end
 
--- /hb ffa. Never while someone outside the team is in the group, or while a
--- member's name is not known yet.
+-- /hb ffa: the leader's own choice, so it works with outsiders in the group too
+-- (with a warning) and the automatic switch to group loot leaves it alone.
 function HB.SetFFA(quiet)
 	local status, _, outsiders = HB.GroupStatus()
-	if status == "mixed" then
-		if not quiet then print_("not free for all: " .. outsiderText(outsiders) .. " is not in the team") end
-		return
+	if status == "mixed" and not quiet then
+		print_("|cffffaa00note:|r " .. outsiderText(outsiders) .. " is not in the team and can loot freely too")
 	end
-	if status == "uncertain" then
-		if not quiet then print_("not free for all: a group member's name is not known yet, try again") end
-		return
-	end
-	return setLootMethod("freeforall", quiet)
+	local ok = setLootMethod("freeforall", quiet)
+	if ok then lootByHand = true end
+	return ok
 end
 
--- Runs after roster and team changes, on the leader with "Free-for-all loot" on.
--- Team only: free for all, once per new roster or team, so a method chosen by hand
--- stays until the group or team changes. Someone outside the team: free for all
--- becomes group loot, every time. Unknown names: look again shortly.
+-- Runs after roster, team and loot method changes, on the leader with
+-- "Free-for-all loot" on. Team only: free for all, once per new roster or team, so
+-- a method chosen by hand stays until the group or team changes. Someone outside
+-- the team: free for all becomes group loot, unless the leader picked the method
+-- by hand. Unknown names: look again shortly.
 local lootToken, lootDoneKey, lootRetries = nil, nil, 0
 local function checkLoot()
 	if not IsInGroup() then lootDoneKey = nil return end
@@ -439,9 +450,19 @@ local function checkLoot()
 		return
 	end
 	lootRetries = 0
+	local m = lootMethod()
+	-- A change HaploBox did not ask for is the leader's own. A request the server
+	-- has not applied yet does not count as one.
+	if lootLastSet then
+		if m == lootLastSet then lootApplied = true
+		elseif m and lootApplied then lootByHand = true end
+	elseif m and lootSeen and m ~= lootSeen then
+		lootByHand = true
+	end
+	lootSeen = m
 	if status == "mixed" then
 		lootDoneKey = nil
-		if lootMethod() == "freeforall" then
+		if m == "freeforall" and not lootByHand then
 			print_(outsiderText(outsiders) .. " is not in the team: switching free for all to group loot")
 			setLootMethod("group", true)
 		end
@@ -450,9 +471,11 @@ local function checkLoot()
 	local teamKey = key .. "|" .. tostring(HB.Norm(HB.Leader()))
 	for _, n in ipairs(HaploBoxTeam.order or {}) do teamKey = teamKey .. "," .. tostring(HB.Norm(n)) end
 	if lootDoneKey == teamKey then return end
-	lootDoneKey = teamKey
-	if lootMethod() ~= "freeforall" then setLootMethod("freeforall", true) end
+	lootDoneKey, lootByHand = teamKey, false
+	if m ~= "freeforall" then setLootMethod("freeforall", true) end
 end
+
+
 
 -- A delayed check looks at the group again when it runs; only the newest one runs.
 function HB.ScheduleLootCheck(delay)
@@ -1141,6 +1164,10 @@ function handlers.PARTY_INVITE_REQUEST(inviter)
 end
 
 local ffaGroupSize = 0
+function handlers.PARTY_LOOT_METHOD_CHANGED()
+	if IsInGroup() then HB.ScheduleLootCheck(1) end
+end
+
 function handlers.GROUP_ROSTER_UPDATE()
 	-- Follow queries and roles only when someone joins: every roster update resets
 	-- other addons' party state. The loot check is safe to repeat (see checkLoot).
@@ -1160,6 +1187,7 @@ function handlers.GROUP_ROSTER_UPDATE()
 		HB.ScheduleLootCheck(1)
 	else
 		lootDoneKey, lootToken = nil, nil  -- a new group gets free for all again
+		lootLastSet, lootApplied, lootSeen, lootByHand = nil, false, nil, false
 	end
 	if HB.db.autoLeaveWithLeader and not HB.IAmLeader() and IsInGroup() and HB.Leader() then
 		local present = inGroup(HB.Leader())
@@ -1598,6 +1626,64 @@ BINDING_NAME_HAPLOBOX_ROLE_TANK = "My role: tank"
 BINDING_NAME_HAPLOBOX_ROLE_HEALER = "My role: healer"
 BINDING_NAME_HAPLOBOX_ROLE_DPS = "My role: dps"
 
+-- ---------------------------------------------------------------- settings
+-- Every change to a saved setting goes through HB.SetOption: the options window, the
+-- quick settings popup and the slash commands. It checks the value, saves it, applies
+-- it and refreshes whatever settings view is open. Returns the saved value, or nil
+-- when the value was refused. Team frame changes made in combat apply after combat.
+local CHOICES = {
+	teamFrame = { auto = true, show = true, hide = true },
+	autoShareQuests = { leader = true, all = true, off = true },
+}
+HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
+local FRAME_KEYS = {
+	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
+	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
+}
+HB.FRAME_KEYS = FRAME_KEYS
+
+function HB.SetOption(key, value)
+	local default = DEFAULTS[key]
+	if default == nil or type(default) == "table" then return nil end
+	if CHOICES[key] then
+		if not CHOICES[key][value] then return nil end
+	elseif key == "partyScale" then
+		value = tonumber(value)
+		if not value or value ~= value or value == math.huge or value == -math.huge then return nil end
+		value = math.floor(math.min(HB.SCALE_MAX, math.max(HB.SCALE_MIN, value)) * 100 + 0.5) / 100
+	elseif type(default) == "boolean" then
+		value = value and true or false
+	else
+		return nil
+	end
+	HB.db[key] = value
+	if key == "teamLocked" and HB.ApplyTeamFrameLock then
+		HB.ApplyTeamFrameLock()
+	elseif FRAME_KEYS[key] and HB.LayoutPartyFrame then
+		HB.LayoutPartyFrame()
+	end
+	if key == "hideQuestTracker" then HB.ApplyQuestTracker() end
+	if key == "autoFFA" and value then HB.ScheduleLootCheck(0.5) end
+	if key == "autoPartyRole" and value and HB.ApplyRoles then HB.ApplyRoles() end
+	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
+	return value
+end
+
+-- true when a team frame change waits for the end of combat
+function HB.SettingsDeferred() return InCombatLockdown() and true or false end
+
+function HB.SetSound(key, value)
+	if DEFAULTS.sounds[key] == nil then return nil end
+	if value == "" or value == "off" or value == nil or value == false then
+		value = false
+	elseif tonumber(value) then
+		value = tonumber(value)
+	end
+	HB.db.sounds[key] = value
+	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
+	return value
+end
+
 -- ---------------------------------------------------------------- slash
 local function help()
 	print_("commands:")
@@ -1607,7 +1693,7 @@ local function help()
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
 	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")
-	print_("  /hb ffa - set free-for-all loot (group leader only)")
+	print_("  /hb ffa - set free-for-all loot (group leader only); HaploBox then leaves it alone")
 	print_("  /hb share - share every quest in your log with the group")
 	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept whisperIn bagsFull mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
@@ -1618,7 +1704,8 @@ local function help()
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
 	print_("  /hb tracker - hide or show Blizzard's quest tracker")
 	print_("  /hb who - show how the game names you and your target")
-	print_("  /hb options - open the options panel; /hb debug - toggle debug output")
+	print_("  /hb options [section] - open the settings (team, frame, follow, group, quests, whispers, sounds, advanced)")
+	print_("  /hb quick - team frame quick settings; /hb debug - toggle debug output")
 	print_("  Key bindings: Esc > Options > Keybindings > AddOns > HaploBox")
 end
 
@@ -1638,8 +1725,7 @@ SlashCmdList.HAPLOBOX = function(input)
 	elseif cmd == "r" or cmd == "reply" then
 		HB.Reply(rest)
 	elseif cmd == "tracker" then
-		HB.db.hideQuestTracker = not HB.db.hideQuestTracker
-		HB.ApplyQuestTracker()
+		HB.SetOption("hideQuestTracker", not HB.db.hideQuestTracker)
 		print_("quest tracker " .. (HB.db.hideQuestTracker and "hidden" or "shown")
 			.. (InCombatLockdown() and " (after combat)" or ""))
 	elseif cmd == "ffa" then
@@ -1666,8 +1752,7 @@ SlashCmdList.HAPLOBOX = function(input)
 			print_("unknown sound event") return
 		end
 		if value == "" then print_(event .. " = " .. tostring(HB.db.sounds[event])) return end
-		if value == "off" then value = false elseif tonumber(value) then value = tonumber(value) end
-		HB.db.sounds[event] = value
+		value = HB.SetSound(event, value)
 		print_(event .. " = " .. tostring(value))
 		HB.PlaySound(event)
 	elseif cmd == "test" then
@@ -1684,32 +1769,30 @@ SlashCmdList.HAPLOBOX = function(input)
 		local a, b = rest:lower():match("^(%S*)%s*(.-)$")
 		local alias = { on = "show", off = "hide", all = "show", leader = "auto" }
 		a = alias[a] or a
+		local later = HB.SettingsDeferred() and " (after combat)" or ""
 		if a == "auto" or a == "show" or a == "hide" then
-			HB.db.teamFrame = a
-			print_("team frame on this toon: " .. a)
-		elseif a == "scale" and tonumber(b) then
-			HB.db.partyScale = math.min(2, math.max(0.5, tonumber(b)))
-			print_("team frame scale: " .. HB.db.partyScale)
+			HB.SetOption("teamFrame", a)
+			print_("team frame on this toon: " .. a .. later)
+		elseif a == "scale" and HB.SetOption("partyScale", b) then
+			print_("team frame scale: " .. HB.db.partyScale .. later)
 		elseif a == "solo" then
-			HB.db.partyFrameSolo = not HB.db.partyFrameSolo
-			print_("team frame when solo: " .. (HB.db.partyFrameSolo and "shown" or "hidden"))
+			HB.SetOption("partyFrameSolo", not HB.db.partyFrameSolo)
+			print_("team frame when solo: " .. (HB.db.partyFrameSolo and "shown" or "hidden") .. later)
 		elseif a == "lock" or a == "unlock" then
 			if HB.SetTeamFrameLocked then HB.SetTeamFrameLocked(a == "lock") end
 		elseif a == "colors" or a == "colours" then
-			HB.db.teamClassColors = not HB.db.teamClassColors
-			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off"))
+			HB.SetOption("teamClassColors", not HB.db.teamClassColors)
+			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off") .. later)
 		elseif a == "xp" or a == "gold" or a == "bags" or a == "buffs" then
 			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags", buffs = "teamShowBuffs" })[a]
-			HB.db[key] = not HB.db[key]
-			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden"))
+			HB.SetOption(key, not HB.db[key])
+			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden") .. later)
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
 			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
 				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|buffs|scale <n>|solo|reset")
-			return
 		end
-		if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	elseif cmd == "who" then
 		print_("you: " .. tostring(HB.UnitIdent("player")) .. "  target: " .. tostring(HB.UnitIdent("target"))
 			.. "  realm: " .. tostring(myRealm))
@@ -1719,9 +1802,11 @@ SlashCmdList.HAPLOBOX = function(input)
 		print_("leader: " .. tostring(HB.Leader()) .. (HB.IAmLeader() and " (you)" or "")
 			.. "  role: " .. tostring(HB.MyRole()) .. "  loot: " .. (IsInGroup() and loot or "not in a group"))
 	elseif cmd == "options" or cmd == "config" then
-		if HB.OpenOptions then HB.OpenOptions() end
+		if HB.OpenOptions then HB.OpenOptions(rest ~= "" and rest:lower() or nil) end
+	elseif cmd == "quick" then
+		if HB.ToggleQuickSettings then HB.ToggleQuickSettings() end
 	elseif cmd == "debug" then
-		HB.db.debug = not HB.db.debug
+		HB.SetOption("debug", not HB.db.debug)
 		print_("debug " .. (HB.db.debug and "on" or "off"))
 	else
 		help()

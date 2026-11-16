@@ -28,7 +28,9 @@ local C = {
 	footer   = { 0.10, 0.11, 0.13, 0.95 },
 	gold     = { 1.00, 0.82, 0.30 },
 }
+HB.THEME = C  -- the options window and quick settings use the same colours
 local BAG_ICON = "Interface\\Buttons\\Button-Backpack-Up"
+local GEAR_ICON = "Interface\\Icons\\INV_Misc_Gear_01"
 local FOOT_H = 22
 local XP_H = 9                 -- XP bar height (with the percentage inside)
 local BUFF_SIZE, BUFF_STEP = 20, 22
@@ -692,6 +694,9 @@ local function createFooter()
 	ft:RegisterForDrag("LeftButton")
 	ft:SetScript("OnDragStart", startMove)
 	ft:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
+	ft:SetScript("OnMouseUp", function(self, button)
+		if button == "RightButton" and HB.ToggleQuickSettings then HB.ToggleQuickSettings(self) end
+	end)
 	solid(ft, "BACKGROUND", C.footer):SetAllPoints()
 	local line = solid(ft, "BORDER", C.gold)
 	line:SetPoint("TOPLEFT") line:SetPoint("TOPRIGHT") line:SetHeight(1)
@@ -716,14 +721,44 @@ local function updateLockUI()
 	local unlocked = not HB.db.teamLocked
 	container.handle:SetShown(unlocked)
 	container.grip:SetShown(unlocked)
+	container.gearTab:SetShown(not unlocked)
 	container.sendButton:SetText(HB.IAmLeader() and "Send team" or "Lead team")
 end
 
+-- Called by HB.SetOption("teamLocked"). In combat the change waits for the layout
+-- after combat, like every other team frame change.
+function HB.ApplyTeamFrameLock()
+	if not container then return end
+	if InCombatLockdown() then HB.LayoutPartyFrame() return end
+	updateLockUI()
+end
+
 function HB.SetTeamFrameLocked(locked)
-	HB.db.teamLocked = locked and true or false
-	if container then updateLockUI() end
+	HB.SetOption("teamLocked", locked)
 	HB.print("team frame " .. (HB.db.teamLocked and "locked (/hb frame unlock to move it)"
-		or "unlocked: drag the bar or a row to move it, drag the corner to resize"))
+		or "unlocked: drag the bar or a row to move it, drag the corner to resize")
+		.. (HB.SettingsDeferred() and " after combat" or ""))
+end
+
+-- A small gear button that opens the quick settings. Never on the secure rows.
+local function gearButton(parent, size)
+	local b = CreateFrame("Button", nil, parent)
+	b:SetSize(size, size)
+	local icon = b:CreateTexture(nil, "ARTWORK")
+	icon:SetAllPoints()
+	icon:SetTexture(GEAR_ICON)
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	b:SetHighlightTexture(GEAR_ICON)
+	b:SetScript("OnClick", function(self) if HB.ToggleQuickSettings then HB.ToggleQuickSettings(self) end end)
+	b:SetScript("OnEnter", function(self)
+		if not GameTooltip then return end
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Team frame settings")
+		GameTooltip:AddLine("Quick settings for this WoW account (not sent to the team). Right-click the TEAM line or type /hb quick too.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+	return b
 end
 
 local function createChrome()
@@ -736,18 +771,25 @@ local function createChrome()
 	h:SetScript("OnDragStart", startMove)
 	h:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
 	solid(h, "BACKGROUND", { 0.10, 0.11, 0.13, 0.95 }):SetAllPoints()
-	local t = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	t:SetPoint("LEFT", 6, 0)
-	t:SetText("drag to move")
 	local lock = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
-	lock:SetSize(48, 16)
+	lock:SetSize(44, 16)
 	lock:SetPoint("RIGHT", -2, 0)
 	lock:SetText("Lock")
 	lock:SetScript("OnClick", function() HB.SetTeamFrameLocked(true) end)
+	local gear = gearButton(h, 16)
+	gear:SetPoint("RIGHT", lock, "LEFT", -4, 0)
+	container.gearButton = gear
 	-- Send team: the same as "Make this toon the leader" (and /hb team in a party)
 	local send = CreateFrame("Button", nil, h, "UIPanelButtonTemplate")
-	send:SetSize(80, 16)
-	send:SetPoint("RIGHT", lock, "LEFT", -4, 0)
+	send:SetSize(76, 16)
+	send:SetPoint("RIGHT", gear, "LEFT", -4, 0)
+	-- the hint gives way first when the frame is narrow
+	local t = h:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	t:SetPoint("LEFT", 6, 0)
+	t:SetPoint("RIGHT", send, "LEFT", -4, 0)
+	t:SetJustifyH("LEFT")
+	t:SetWordWrap(false)
+	t:SetText("drag to move")
 	send:SetScript("OnClick", function() HB.MakeMeLeader() end)
 	send:SetScript("OnEnter", function(self)
 		if not GameTooltip then return end
@@ -759,6 +801,14 @@ local function createChrome()
 	send:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 	container.sendButton = send
 	container.handle = h
+
+	-- While locked the bar is hidden: a small gear above the top-right corner stays.
+	local tab = gearButton(container, 14)
+	tab:SetPoint("BOTTOMRIGHT", container, "TOPRIGHT", 0, 2)
+	tab:SetAlpha(0.5)
+	tab:HookScript("OnEnter", function(self) self:SetAlpha(1) end)
+	tab:HookScript("OnLeave", function(self) self:SetAlpha(0.5) end)
+	container.gearTab = tab
 
 	local g = CreateFrame("Button", nil, container)
 	g:SetSize(16, 16)

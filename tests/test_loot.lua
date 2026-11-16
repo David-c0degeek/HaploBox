@@ -129,19 +129,68 @@ test("a client without loot methods is left alone", function()
 end)
 
 -- ---------------------------------------------------------------- /hb ffa
-test("/hb ffa is refused with an outsider or an unknown name in the group", function()
+test("/hb ffa works with an outsider, warns, and is not switched back", function()
 	W.loot = GROUP
 	leaderIn("Elya", "Mallory")
-	HB.db.autoFFA = false
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
 	SlashCmdList.HAPLOBOX("ffa")
-	eq(W.loot, GROUP, "refused with Mallory")
-	eq(printedMatching("Mallory is not in the team"), 1, "says why")
-	W.units.party2 = "Unknown"
+	eq(W.loot, FFA, "the leader's choice")
+	eq(printedMatching("Mallory is not in the team and can loot freely"), 1, "warning")
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, FFA, "not switched back")
+end)
+
+test("/hb ffa when free for all is already set still counts as the leader's choice", function()
+	leaderIn("Elya", "Nyra")
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
 	SlashCmdList.HAPLOBOX("ffa")
-	eq(W.loot, GROUP, "refused with an unknown name")
-	W.units.party2 = "Nyra"
+	eq(printedMatching("already free for all"), 1, "already set")
+	W.units.party3 = "Mallory"
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, FFA, "kept")
+end)
+
+test("/hb ffa without authority or solo does not count as a choice", function()
+	W.notGroupLeader = true
+	leaderIn("Elya", "Nyra")
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
 	SlashCmdList.HAPLOBOX("ffa")
-	eq(W.loot, FFA, "allowed for the team")
+	W.notGroupLeader = nil
+	W.units.party3 = "Mallory"
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, GROUP, "outsider protection still on")
+end)
+
+test("free for all picked in Blizzard's menu with an outsider stays", function()
+	leaderIn("Elya", "Mallory")
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, GROUP, "switched once when Mallory was found")
+	W.loot = FFA  -- the leader picks free for all again
+	fire("PARTY_LOOT_METHOD_CHANGED")
+	advance(3)
+	eq(W.loot, FFA, "left alone")
+	W.units.party3 = "Zed"  -- another outsider joins
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, FFA, "still the leader's choice")
+end)
+
+test("a slow server answer is not taken for a choice by hand", function()
+	leaderIn("Elya", "Mallory")
+	W.lootRefused = true  -- the request is not applied yet
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	W.lootRefused = nil
+	fire("GROUP_ROSTER_UPDATE")
+	advance(3)
+	eq(W.loot, GROUP, "still switched to group loot")
 end)
 
 -- ---------------------------------------------------------------- trusted roster
