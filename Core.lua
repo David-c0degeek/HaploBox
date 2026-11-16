@@ -57,6 +57,11 @@ local DEFAULTS = {
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars, where the client reports them
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
+	teamShowHots        = true,   -- team frame: heal-over-time icons on the health bars
+	teamHotNames        = "",     -- HoT names, comma separated; empty = the built-in list
+	teamRequiredBuffs   = "",     -- buff names every member should have, comma separated; empty = off
+	teamBuffOverview    = false,  -- separate window: every member's buffs
+	teamDebuffOverview  = false,  -- separate window: every member's debuffs
 	autoPartyRole       = true,   -- set my party and group finder role from my team role
 	hideQuestTracker    = true,   -- hide Blizzard's quest tracker (objective tracker)
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
@@ -1642,7 +1647,8 @@ HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
 	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
 	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
-	teamHealPrediction = true, teamCastBars = true, teamManaRule = true,
+	teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
+	teamHotNames = true, teamRequiredBuffs = true, teamBuffOverview = true, teamDebuffOverview = true,
 }
 HB.FRAME_KEYS = FRAME_KEYS
 
@@ -1657,6 +1663,9 @@ function HB.SetOption(key, value)
 		value = math.floor(math.min(HB.SCALE_MAX, math.max(HB.SCALE_MIN, value)) * 100 + 0.5) / 100
 	elseif type(default) == "boolean" then
 		value = value and true or false
+	elseif type(default) == "string" then
+		if type(value) ~= "string" then return nil end
+		value = value:gsub("|", ""):match("^%s*(.-)%s*$"):sub(1, 200)
 	else
 		return nil
 	end

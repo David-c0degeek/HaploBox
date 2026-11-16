@@ -660,6 +660,14 @@ local function updateRow(r)
 	runHooks("refresh", r)
 end
 
+-- Shown rows in team order, for displays outside this file (aura overviews).
+function HB.ShownRows()
+	local out = {}
+	if not (container and container:IsShown()) then return out end
+	for _, r in ipairs(rows) do if r:IsShown() then out[#out + 1] = r end end
+	return out
+end
+
 function HB.RefreshPartyFrame()
 	for _, r in ipairs(rows) do if r:IsShown() then updateRow(r) end end
 	updateFooter()

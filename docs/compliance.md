@@ -66,6 +66,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | Follow, focus, stats, errors | Local events | Group addon messages | None | Outsiders' messages ignored; outsiders with addon tools can read them | Kept; see privacy |
 | Whisper forwarding | Whisper from outside the team | Addon whisper to the leader | Stranger whispers | Not affected (addon whisper, never the group) | Kept |
 | Reply relay | Leader replies (`Y`) | Chat whisper from the follower to the stranger | Leader types the reply | Only from the stored leader | Kept; chat, not gameplay |
+| HoTs, required buffs, aura windows | Unit aura events, 1 s timer | Display only | None | Game data about group members | Display only; restricted data shows unknown |
 | Incoming heals, cast bars, mana timer | Unit events | Display on the team frame only | None | Game data about group members, as Blizzard's own frames show it | Display only; secret values never computed with |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 

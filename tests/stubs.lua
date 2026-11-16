@@ -70,6 +70,18 @@ local function castInfo(t)
 end
 function UnitCastingInfo(u) return castInfo(W.casts and W.casts[u]) end
 function UnitChannelInfo(u) return castInfo(W.channels and W.channels[u]) end
+-- W.auras[u] = { HELPFUL = { {name=, icon=, duration=, expirationTime=, sourceUnit=, dispelName=}, ... }, HARMFUL = {...} }
+-- W.auraError makes the call fail; W.auraEndless returns an aura for every index.
+C_UnitAuras = {
+	GetAuraDataByIndex = function(u, i, filter)
+		if W.auraError then error("restricted") end
+		if W.auraEndless then return { name = "x" .. i, icon = 1, duration = 0, expirationTime = 0 } end
+		local t = W.auras and W.auras[u] and W.auras[u][filter]
+		return t and t[i]
+	end,
+}
+local SPELLS = { [139] = "Renew", [774] = "Rejuvenation", [8936] = "Regrowth" }
+C_Spell = { GetSpellName = function(id) return SPELLS[id] end }
 WOW_PROJECT_CLASSIC, WOW_PROJECT_MAINLINE = 2, 1
 WOW_PROJECT_ID = 2
 function UnitInRange() return true, true end
@@ -166,6 +178,7 @@ local frameMethods = {
 	IsProtected = function() return false end,
 	SetChecked = function(self, v) self.checked = v and true or false end,
 	SetValue = function(self, v) self.value = v end,
+	EnableMouse = function(self, v) self.mouse = v and true or false end,
 	GetValue = function(self) return self.value end,
 	SetMinMaxValues = function(self, a, b) self.min, self.max = a, b end,
 	GetChecked = function(self) return self.checked end,

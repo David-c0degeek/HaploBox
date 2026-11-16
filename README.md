@@ -52,6 +52,11 @@ The health bars can show more, all read from the game itself and each with its o
 - **Incoming heals:** a lighter part of the health bar shows heals on their way, on clients that report them. When the game hides the numbers, nothing extra is shown.
 - **Casts:** a thin yellow bar along the bottom of the health bar fills while a character casts; a green one empties while it channels. It disappears when the cast ends, fails or is interrupted.
 - **Five-second rule** (Classic Era only): after a character's mana goes down, a thin light bar on top of its mana bar runs down for five seconds. It is an estimate of the pause in spirit-based regeneration after spending mana: HaploBox sees only that mana went down, so a mana drain by an enemy starts it too. Free spells do not. On other clients it is not shown, because the rule is not known to apply there.
+- **Heals over time:** small icons at the bottom left of the health bar show HoTs from your group with their seconds left: Renew, Rejuvenation, Regrowth, Lifebloom, Wild Growth and Riptide, or the spells you list under **Heal-over-time spells**.
+- **Required buffs:** list the buffs everyone should have under **Buffs everyone should have** (for example `Power Word: Fortitude, Arcane Intellect`). A row then names the missing ones in red, or shows `buffs ?` when the game does not tell.
+- **Buff and debuff windows:** two optional windows (off by default) list every member's buffs or debuffs with timers, debuffs bordered by their dispel type. Drag them by the title while the team frame is unlocked; they keep their place. Clicks pass through the icons.
+
+When the game restricts aura data (retail does this in combat), or a member is offline, these show `unknown` (or `offline`) instead of old or guessed values. HaploBox reads up to 40 auras per member; if there are more, a buff it did not reach shows as `buffs ?`, not as missing, and the window marks the list with `?`. They are additions: Blizzard's own frames are not changed.
 
 WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
 

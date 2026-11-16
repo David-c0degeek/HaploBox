@@ -34,6 +34,13 @@ local SECTIONS = {
 		{ "teamHealPrediction", "toggle", "Incoming heals on the health bars (where the game reports them)" },
 		{ "teamCastBars", "toggle", "Cast and channel bar on the health bars" },
 		{ "teamManaRule", "toggle", "Five-second mana rule timer on the mana bars (Classic Era only)" },
+		{ "teamShowHots", "toggle", "Heal-over-time icons on the health bars" },
+		{ "teamHotNames", "text", "Heal-over-time spells",
+			help = "Spell names, comma separated. Empty: Renew, Rejuvenation, Regrowth, Lifebloom, Wild Growth, Riptide." },
+		{ "teamRequiredBuffs", "text", "Buffs everyone should have",
+			help = "Buff names, comma separated, e.g. Power Word: Fortitude, Arcane Intellect. A row names the missing ones. Empty: off." },
+		{ "teamBuffOverview", "toggle", "Window: every member's buffs" },
+		{ "teamDebuffOverview", "toggle", "Window: every member's debuffs" },
 		{ "reset", "action", "Reset position and size", run = function() HB.ResetPartyPosition() end },
 	} },
 	{ id = "follow", title = "Follow & alerts", items = {
@@ -81,7 +88,8 @@ HB.SETTINGS = SECTIONS
 -- the quick settings popup: display settings of the team frame on this account
 local QUICK = {
 	"teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags",
-	"teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule",
+	"teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule", "teamShowHots",
+	"teamBuffOverview", "teamDebuffOverview",
 }
 
 local function findItem(key)
@@ -166,6 +174,32 @@ local function control(parent, it, y, width)
 		plus:SetScript("OnClick", function() HB.SetOption(key, (HB.db[key] or 1) + 0.1) end)
 		minus.key, plus.key = key, key
 		return y - 28, function() value:SetText(string.format("%.0f%%", (HB.db[key] or 1) * 100)) end, plus, minus
+	elseif kind == "text" then
+		local l = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+		l:SetPoint("TOPLEFT", 8, y - 4)
+		l:SetText(label .. ":")
+		local eb = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+		eb:SetSize(width - 30, 20)
+		eb:SetPoint("TOPLEFT", 14, y - 20)
+		eb:SetAutoFocus(false)
+		local function save(self)
+			HB.SetOption(key, self:GetText() or "")
+			self:ClearFocus()
+		end
+		eb:SetScript("OnEnterPressed", save)
+		eb:SetScript("OnEditFocusLost", save)
+		eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+		eb.key = key
+		local hint = parent:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+		hint:SetPoint("TOPLEFT", 8, y - 42)
+		hint:SetWidth(width - 16)
+		hint:SetJustifyH("LEFT")
+		hint:SetText(it.help or "")
+		return y - 70, function()
+			if eb.HasFocus and eb:HasFocus() then return end
+			eb:SetText(HB.db[key] or "")
+			eb:SetCursorPosition(0)
+		end, eb
 	elseif kind == "action" then
 		local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
 		b:SetSize(math.min(width - 16, 190), 22)

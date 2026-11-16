@@ -10,4 +10,5 @@ Core.lua
 Death.lua
 Party.lua
 Indicators.lua
+Auras.lua
 Options.lua
