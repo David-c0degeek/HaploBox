@@ -139,3 +139,55 @@ Verdict: **REVISE PLAN** before importing these features. The useful ideas remai
 viable subjects for exploration, but the fork's party-order and trust assumptions
 do not meet our requirements. This review does not certify policy compliance;
 issue #3 remains the place to record official policy/API evidence.
+
+## Update: JCDR branches of 2026-11-16 (TB19.1m and TB19.1n)
+
+Reviewed 2026-11-17 against these branches of the `jcdr` remote:
+
+- `jcdr-total-overhaul-macros-mvp` (`ecec813`, 21 commits after `e48cb58`)
+- `jcdr-total-overhaul-tb19-1n-preview` (`638c1f1`, the same plus one)
+- `jcdr-spell-database-prep` (`9a119ba`, docs and inactive data only)
+
+The fork's own notes say none of this has been tested in the game. Nothing was
+merged.
+
+### What the branches add
+
+- **Macro Menu (`/hb macros`):** creates HaploBox-owned Blizzard macros for
+  Smart Follow, Assist, Trade with leader and Druid spell presets, which the
+  player places on bars by hand. Bindings are offered with an explicit
+  collision confirmation.
+- **BOX ON/OFF spell macros:** BOX OFF casts normally. BOX ON assists `party1`
+  for damage spells, and heals with Shift on yourself, then a friendly
+  mouseover, then `party1`. The leader has its own profile without assist.
+- **Smart Follow:** direct mode follows `party1`. Dungeon mode makes the
+  healer follow `party1` and the others follow the one Blizzard healer; with
+  no healer or more than one, the macro does nothing.
+- **Sync Team:** the leader can push macro and binding setup to followers that
+  opted in, with answers in chat.
+- **Spell data prep:** Druid spell inventories and targeting profiles,
+  documented but not loaded.
+
+### Taken into our designs
+
+Recorded in [design-notes.md](design-notes.md) under #4 and #8:
+
+- Healer resolution that refuses to guess: none or several healers means the
+  follow control does nothing, and says why.
+- The heal conditional `[mod:shift,@player][@mouseover,help,nodead][@<fallback>,help,nodead]`
+  as a candidate, with a resolved fallback.
+- Exact-body macro ownership: a HaploBox macro is rewritten only while it still
+  matches what HaploBox wrote; personal edits are never overwritten.
+- Safe states: off at login until the group is confirmed, off solo, in raids
+  and in non-team groups; protected changes only out of combat.
+
+### Not taken
+
+- **`party1` as the leader.** It is the first other member in each client's own
+  list. It is often the leader, but not after members leave or the leader
+  changes. Our controls resolve the leader by name, out of combat.
+- **`/assist party1` then `/cast`.** If assisting fails, the cast can go to an
+  old, unrelated enemy (see #8).
+- **Binding sync.** Layout sharing (#14) leaves key bindings out on purpose.
+- **A wholesale merge.** The branches build on an older Core and a separate
+  HaploBar/Quick Menu structure; ideas are taken one at a time.

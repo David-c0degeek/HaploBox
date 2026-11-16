@@ -1,8 +1,9 @@
 # Design notes: open exploration issues
 
-These notes cover issues #2, #4, #5 and #8. They are designs, not features: nothing
-here is implemented. Every one of them needs checks in the real client before any
-code is written. The policy rules in [compliance.md](compliance.md) apply to all of
+These notes cover issues #2, #4, #5 and #8. The owner approved the designs on
+2026-11-17, and #2, #4 and #8 may be built and tested offline. Checks in the real
+client still gate any recommendation to use a feature and the closing of its
+issue. The policy rules in [compliance.md](compliance.md) apply to all of
 them: no input broadcasting, no gameplay started by a message from another toon,
 and no way around a client restriction.
 
@@ -104,17 +105,27 @@ explicit key press or click on the toon that becomes the leader.
   - User macros use `/click HaploBoxAssistLeader` and never contain character
     names.
 - The healer resolver is shared by the follow indicators, the macros and the
-  team frame:
-  1. the team role, then
-  2. the Blizzard role, then
-  3. none.
-  - With more than one healer, use the first in team order and say so in the
-    settings.
+  team frame. It counts the Blizzard HEALER role among the accepted team members
+  in the group, the player included, and needs exactly one.
+  - None or two or more: "Follow healer" does nothing, and the settings say why.
+    This follows the JCDR fork, which leaves its follow macro inert in the same
+    cases rather than guessing.
+  - Stored HaploBox roles are not read by the resolver. They matter only because
+    HaploBox applies them as Blizzard roles (`HB.ApplyRoles`), so both always
+    come from the same source.
 - Never follow yourself. A healer that is the leader makes "Follow healer"
   follow the leader. A follower whose healer follows it falls back to the
   leader, so there is no follow loop.
 - Key bindings live under Keybindings > AddOns > HaploBox, with no keys
   assigned. Existing bindings and the focus target are left alone.
+- **Safe states (from the JCDR fork):** role controls are inert solo, in raids,
+  and in a group that is not the accepted team. They become inert again at
+  login until the group is confirmed. Attribute changes happen only out of
+  combat; a change asked for in combat waits and is shown as pending.
+- **Not from the fork:** it targets `party1` as the leader. `party1` is only the
+  first other member in that client's list. It is often the leader when the
+  leader formed the group, but not after members leave or the leader changes.
+  These controls use the resolved leader name instead.
 
 ### Open questions
 
@@ -203,11 +214,22 @@ enemy can be alive.
   designed. A different secure design is needed, or a manual alternative.
 - **Off switch:** an on/off setting on each toon (default off). The team frame
   shows the current state.
+- **Heal variant (from the JCDR fork):** for heals, a candidate conditional is
+  `[mod:shift,@player][@mouseover,help,nodead][@<leader>,help,nodead]`: Shift
+  heals yourself, then a living friendly unit under the mouse, then the
+  fallback. Heals fail closed by nature (`help` refuses an enemy), so this
+  variant carries less risk than assist. **verify** on Forever, and keep the
+  fallback a resolved name or the button's unit, never `party1`.
+- **Fork assist pattern rejected:** its DPS macros use `/assist party1` followed
+  by `/cast`. That has the fail-open problem above, and `party1` is not always
+  the leader.
 - Focus is not used.
 
 ### Not doing
 
-- No `EditMacro` rewrites of user macros.
+- No `EditMacro` rewrites of user macros. If HaploBox ever creates macros of its
+  own (as the fork does), it rewrites one only while its text still matches
+  exactly what HaploBox wrote, and never a macro the player has edited.
 - No actions started by leader messages. A leader message changes only the
   leader name, which the button reads out of combat.
 - No Frostbolt example in the README until it has been tried on Forever.
