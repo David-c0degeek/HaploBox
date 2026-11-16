@@ -88,6 +88,8 @@ local SECTIONS = {
 		{ "mountOff", "Passenger mount: off" },
 	} },
 	{ id = "advanced", title = "Advanced", items = {
+		{ "teamHeader", "toggle", "Secure team rows in a party (turn off if the team frame misbehaves)",
+			help = "On: the game keeps each row on its character, also in combat. Off: the older rows, which dim and show ? when the group changes in combat." },
 		{ "debug", "toggle", "Debug messages in chat (ignored addon messages, failed sends)" },
 	} },
 }

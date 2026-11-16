@@ -59,6 +59,7 @@ local DEFAULTS = {
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars, where the client reports them
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
+	teamHeader          = true,   -- party rows from the game's secure group header (#2)
 	teamView            = "main", -- team frame on this account: "main" or "mini" (Mini Heal: big health tiles)
 	acceptSharedUI      = true,   -- followers: take the team frame layout the leader shares
 	teamShowHots        = true,   -- team frame: heal-over-time icons on the health bars
@@ -1683,7 +1684,7 @@ HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
 	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
 	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
-	teamView = true, teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
+	teamView = true, teamHeader = true, teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
 	teamHotNames = true, teamRequiredBuffs = true, teamBuffOverview = true, teamDebuffOverview = true,
 }
 HB.FRAME_KEYS = FRAME_KEYS

@@ -292,14 +292,21 @@ local function sizeRow(r)
 	runHooks("size", r)
 end
 
-local function createRow(i)
-	local r = CreateFrame("Button", "HaploBoxPartyRow" .. i, container, "SecureUnitButtonTemplate")
-	r:RegisterForClicks("AnyUp")
-	r:SetAttribute("type1", "target")
-	-- Clique and other click-casting addons bind the frames listed here (also when
-	-- they load after HaploBox: they read the table at load)
-	ClickCastFrames = ClickCastFrames or {}
-	ClickCastFrames[r] = true
+-- existing: a button the group header made (decorated here); plain: a row for a team
+-- member outside the group, which has nothing to click
+local function createRow(i, existing, plain)
+	local r = existing or CreateFrame("Button", (plain and "HaploBoxAwayRow" or "HaploBoxPartyRow") .. i, container,
+		not plain and "SecureUnitButtonTemplate" or nil)
+	if not plain then
+		r:RegisterForClicks("AnyUp")
+		-- only set here, never by the header: a header button this code has not
+		-- decorated has no click action
+		r:SetAttribute("type1", "target")
+		-- Clique and other click-casting addons bind the frames listed here (also when
+		-- they load after HaploBox: they read the table at load)
+		ClickCastFrames = ClickCastFrames or {}
+		ClickCastFrames[r] = true
+	end
 	r:RegisterForDrag("LeftButton")
 	r:SetScript("OnDragStart", startMove)
 	r:SetScript("OnDragStop", function() HB.SavePartyPosition() end)
@@ -426,9 +433,13 @@ local function showStale(r)
 	runHooks("clear", r)
 end
 
+local bindKid  -- header rows: label from the unit the game bound (below)
 local function markStaleRows()
 	for _, r in ipairs(rows) do
-		if r:IsShown() and r.unit and not r.stale and HB.Norm(HB.UnitIdent(r.unit)) ~= HB.Norm(r.name) then
+		if r.headerChild then
+			-- the game rebinds header rows itself; only the label is redrawn here
+			if r:IsShown() then bindKid(r, r:GetAttribute("unit")) end
+		elseif r:IsShown() and r.unit and not r.stale and HB.Norm(HB.UnitIdent(r.unit)) ~= HB.Norm(r.name) then
 			r.stale = true
 			showStale(r)
 		end
@@ -748,11 +759,16 @@ local function sizeContainer()
 	local ft = container.footer
 	ft:SetShown(showTotals() and true or false)
 	container:SetSize(W, rowsH + (ft:IsShown() and (GAP + FOOT_H) or 0))
-	for i, r in ipairs(rows) do
-		if r:IsShown() then
+	local i = 0
+	for _, r in ipairs(rows) do
+		if r.headerChild then
+			sizeRow(r)  -- the header places its own rows
+			if r:IsShown() then i = i + 1 end
+		elseif r:IsShown() then
 			sizeRow(r)
 			r:ClearAllPoints()
-			r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -(i - 1) * (FH + GAP))
+			r:SetPoint("TOPLEFT", container, "TOPLEFT", 0, -i * (FH + GAP))
+			i = i + 1
 		end
 	end
 	ft:ClearAllPoints()
@@ -929,6 +945,146 @@ local function wanted()
 	return #HB.TeamOrder() > 0
 end
 
+-- ---------------------------------------------------------------- secure group header (#2)
+-- In a party the rows come from a SecureGroupHeaderTemplate header. The game rebinds
+-- its rows in combat, and each row's label is drawn from the unit the game bound, so
+-- a row cannot show one character and click another. The header lists only the
+-- accepted team (nameList). Raids, clients without the template and the
+-- "Secure team rows" setting turned off use the direct rows below.
+local MAX_PARTY = 5
+local header        -- the header once its five rows exist; false: no template on this client
+local hframe        -- the header frame, made once
+local kids = {}     -- the header's five rows
+local slots = {}    -- direct rows (raids and the fallback)
+local awayRows = {} -- team members outside the group: nothing to click
+
+function bindKid(r, unit)
+	for u, row in pairs(unitRow) do if row == r then unitRow[u] = nil end end
+	local name = unit and HB.UnitIdent(unit) or nil
+	if r.name ~= name or r.unit ~= unit then runHooks("clear", r) end
+	r.unit, r.name, r.stale = unit, name, nil
+	if unit then unitRow[unit] = r end
+	r.nameText:SetText(name and displayName(name) or "")
+	r:SetAlpha(1)
+	if unit and r:IsShown() then updateRow(r) end
+end
+
+-- Called out of combat with the container shown: the header only makes rows while
+-- it is visible. If it still has not made all five, the direct rows are used this
+-- time and the next layout tries again.
+local function createHeader()
+	if header ~= nil then return header end
+	if not hframe then
+		local ok, h = pcall(CreateFrame, "Frame", "HaploBoxHeader", container, "SecureGroupHeaderTemplate")
+		if not ok or not h then
+			header = false
+			HB.debug("team frame: no SecureGroupHeaderTemplate, direct rows")
+			return false
+		end
+		hframe = h
+	end
+	local h = hframe
+	for k, v in pairs({
+		template = "SecureUnitButtonTemplate", templateType = "Button",
+		showPlayer = true, showParty = true, showRaid = false, showSolo = true,
+		sortMethod = "NAMELIST", nameList = "", point = "TOP", yOffset = -GAP,
+		unitsPerColumn = MAX_PARTY, maxColumns = 1,
+	}) do h:SetAttribute(k, v) end
+	h:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
+	-- make all five rows now, out of combat, so the game never has to make one in combat
+	h:SetAttribute("startingIndex", -(MAX_PARTY - 1))
+	h:Show()
+	h:SetAttribute("startingIndex", 1)
+	for i = 1, MAX_PARTY do
+		local c = h:GetAttribute("child" .. i)
+		if not c then
+			HB.debug("team frame: the header made " .. (i - 1) .. " rows, direct rows for now")
+			h:Hide()
+			wipe(kids)
+			return false
+		end
+		kids[i] = c
+	end
+	for i, c in ipairs(kids) do
+		createRow(i, c)
+		c.headerChild = true
+		c:SetScript("OnAttributeChanged", function(self, key, value)
+			if key == "unit" then bindKid(self, value) end
+		end)
+	end
+	header = h
+	return h
+end
+
+-- The name the header compares: short on this realm, Name-Realm elsewhere.
+local function headerName(n)
+	local base = n:match("^(.-)%-.+$")
+	if base and HB.Norm(n) == HB.Norm(base) then return base end
+	return n
+end
+
+local function teamOnly(names)
+	local out = {}
+	for _, n in ipairs(names) do if HB.IsTeamName(n) then out[#out + 1] = n end end
+	return out
+end
+
+local function hideSlots()
+	for _, r in ipairs(slots) do
+		if r.name or r.unit then runHooks("clear", r) end
+		r.name, r.unit = nil, nil
+		r:Hide()
+		r:SetAttribute("unit", nil)
+	end
+end
+
+local function layoutHeader(names)
+	hideSlots()
+	wipe(rows)
+	wipe(unitRow)
+	-- the name list holds the whole team: the game shows the ones in the group, so a
+	-- team member who joins in combat gets a secure row at once (its AWAY row stays
+	-- until combat ends)
+	local list, away = {}, {}
+	for _, n in ipairs(names) do
+		list[#list + 1] = headerName(n)
+		if not unitForName(n) then away[#away + 1] = n end
+	end
+	for _, c in ipairs(kids) do rows[#rows + 1] = c end
+	if RegisterStateDriver then RegisterStateDriver(header, "visibility", "[group:raid] hide; show") end
+	header:SetAttribute("nameList", table.concat(list, ","))
+	for _, c in ipairs(kids) do bindKid(c, c:IsShown() and c:GetAttribute("unit") or nil) end
+	for i, n in ipairs(away) do
+		local r = awayRows[i] or createRow(i, nil, true)
+		awayRows[i] = r
+		if r.name ~= n then runHooks("clear", r) end
+		r.name, r.unit, r.stale = n, nil, nil
+		r.nameText:SetText(displayName(n))
+		r:Show()
+		rows[#rows + 1] = r
+	end
+	for i = #away + 1, #awayRows do
+		local r = awayRows[i]
+		if r.name then runHooks("clear", r) end
+		r.name = nil
+		r:Hide()
+	end
+end
+
+local function hideHeader()
+	if not header then return end
+	if UnregisterStateDriver then UnregisterStateDriver(header, "visibility") end
+	header:Hide()
+	for _, c in ipairs(kids) do bindKid(c, nil) end
+	for _, r in ipairs(awayRows) do
+		if r.name then runHooks("clear", r) end
+		r.name = nil
+		r:Hide()
+	end
+end
+
+function HB.TeamHeaderActive() return header and header:IsShown() and HB.db.teamHeader ~= false or false end
+
 function HB.LayoutPartyFrame()
 	if not container then return end
 	if InCombatLockdown() then
@@ -942,9 +1098,23 @@ function HB.LayoutPartyFrame()
 	if not wanted() then container:Hide() return end
 	local names = HB.TeamOrder()
 	displayPrefix = sharedPrefix(names)
+	local team = teamOnly(names)
+	local useHeader = HB.db.teamHeader ~= false and not IsInRaid() and #team > 0
+	if useHeader and not header then container:Show() end  -- the header makes rows only while visible
+	if useHeader and createHeader() then
+		layoutHeader(team)
+		sizeContainer()
+		updateLockUI()
+		container:Show()
+		HB.RefreshPartyFrame()
+		return
+	end
+	hideHeader()
+	wipe(rows)
 	wipe(unitRow)
 	for i, name in ipairs(names) do
-		local r = rows[i] or createRow(i)
+		local r = slots[i] or createRow(i)
+		slots[i] = r
 		rows[i] = r
 		local unit = unitForName(name)
 		if r.name ~= name or r.unit ~= unit then runHooks("clear", r) end
@@ -956,8 +1126,8 @@ function HB.LayoutPartyFrame()
 		if r.unit then unitRow[r.unit] = r end
 		r:Show()
 	end
-	for i = #names + 1, #rows do
-		local r = rows[i]
+	for i = #names + 1, #slots do
+		local r = slots[i]
 		if r.name or r.unit then runHooks("clear", r) end
 		r.name, r.unit = nil, nil
 		r:Hide()

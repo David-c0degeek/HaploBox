@@ -10,6 +10,7 @@ W = {
 	timers = {},
 	sendResults = {},    -- queued return values for SendAddonMessage (default: success)
 	accepted = 0, questAccepted = 0, left = 0, lfgRoles = nil, questnpc = nil,
+	header = false,      -- true: SecureGroupHeaderTemplate exists (test_header.lua)
 }
 
 function GetTime() return W.now end
@@ -198,13 +199,22 @@ local frameMethods = {
 	GetEffectiveScale = function() return 1 end,
 	GetStringWidth = function() return 10 end,
 	IsShown = function(self) return self.shown ~= false end,
-	Show = function(self) self.shown = true end,
+	Show = function(self) self.shown = true if self.isHeader then headerUpdate(self) end end,
 	Hide = function(self) self.shown = false end,
 	SetShown = function(self, v) self.shown = v and true or false end,
 	SetText = function(self, t) self.text = t end,
 	GetText = function(self) return self.text end,
 	SetAlpha = function(self, a) self.alpha = a end,
-	SetAttribute = function(self, k, v) self.attrs = self.attrs or {} self.attrs[k] = v end,
+	SetAttribute = function(self, k, v)
+		self.attrs = self.attrs or {}
+		local same = self.attrs[k] == v
+		self.attrs[k] = v
+		-- an unchanged value does not count on firing the handler (same unit token,
+		-- new person behind it): tests must not depend on it
+		if not same and self.scripts and self.scripts.OnAttributeChanged then self.scripts.OnAttributeChanged(self, k, v) end
+		if self.isHeader then headerUpdate(self) end
+	end,
+	GetAttribute = function(self, k) return self.attrs and self.attrs[k] end,
 	SetScript = function(self, k, fn) self.scripts = self.scripts or {} self.scripts[k] = fn end,
 	IsProtected = function() return false end,
 	SetChecked = function(self, v) self.checked = v and true or false end,
@@ -231,9 +241,64 @@ function newFrame(name)
 	if name then _G[name] = fr end
 	return fr
 end
-function CreateFrame(_, name) return newFrame(name) end
+-- A small SecureGroupHeaderTemplate: party only (the real one also treats a raid as a
+-- party when showParty is on, so only the visibility driver hides it there). It rebinds
+-- its children on every roster change, in combat too, and never runs addon layout.
+local headers = {}
+local function headerUnits(h)
+	if h.attrs.nameList == nil then return {} end
+	local order = {}
+	for n in (h.attrs.nameList or ""):gmatch("[^,]+") do order[#order + 1] = n end
+	local out = {}
+	for _, n in ipairs(order) do
+		for _, u in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
+			if UnitName(u) == n and (u == "player" or IsInGroup() or h.attrs.showSolo) then out[#out + 1] = u end
+		end
+	end
+	return out
+end
+function headerUpdate(h)
+	h.kids = h.kids or {}
+	-- like the real header: nothing happens while it is not visible (its parent too)
+	if h.parent and h.parent.shown == false then return end
+	local hidden = h.shown == false or (h.driver and W.raid)
+	local units = hidden and {} or headerUnits(h)
+	local start = h.attrs.startingIndex or 1
+	local cap = (h.attrs.unitsPerColumn or 1) * (h.attrs.maxColumns or 1)
+	local need = math.min(cap, #units - start + 1)
+	for i = #h.kids + 1, need do
+		local c = newFrame((h.name or "Header") .. "UnitButton" .. i)
+		h.kids[i] = c
+		h.attrs["child" .. i] = c
+	end
+	for i, c in ipairs(h.kids) do
+		local u = units[start + i - 1]
+		if hidden or i > need then
+			c:SetAttribute("unit", nil)
+			c.shown = false
+		else
+			c:SetAttribute("unit", u)
+			c.shown = true
+		end
+	end
+end
+function RegisterStateDriver(f, _, cond) f.driver = cond headerUpdate(f) end
+function UnregisterStateDriver(f) f.driver = nil end
+function CreateFrame(_, name, parent, template)
+	if template == "SecureGroupHeaderTemplate" then
+		if not W.header then error("unknown template " .. template) end
+		local h = newFrame(name)
+		h.isHeader, h.name, h.attrs, h.parent = true, name, {}, parent
+		headers[#headers + 1] = h
+		return h
+	end
+	return newFrame(name)
+end
 UIParent = newFrame()
 function fire(e, ...)
+	if e == "GROUP_ROSTER_UPDATE" or e == "UNIT_NAME_UPDATE" then
+		for _, h in ipairs(headers) do headerUpdate(h) end  -- the game's header goes first
+	end
 	for fr in pairs(events[e] or {}) do
 		if fr.scripts and fr.scripts.OnEvent then fr.scripts.OnEvent(fr, e, ...) end
 	end

@@ -62,7 +62,7 @@ When the game restricts aura data (retail does this in combat), or a member is o
 
 **Sharing the layout:** set the frame up once on the leader, then click **Share this layout with the team** (settings, **Team frame**) or type `/hb frame share`. A popup names who gets it and what is shared: what the frame shows, its size, scale and position (as a fraction of the screen, so it fits other window sizes) and the aura windows. Not shared: Main / Mini Heal, team and roles, automation, sounds and key bindings. It goes by private addon whisper to team members in your group, and the leader sees per character whether it was applied, waits for the end of combat, was refused, or got no answer (older HaploBox, offline). A follower takes it only from its own leader, can turn **Take the layout the leader shares** off, and can put its own layout back with **Undo the shared layout** or `/hb frame undo`.
 
-WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
+**Rows in combat:** in a party, the rows come from the game's own secure group header, which keeps each row on its character even when someone joins or leaves in combat (not yet confirmed in the game; see issue #2). Only your accepted team gets a row there; anyone else in the group does not. In a raid, or with **Advanced > Secure team rows** turned off, HaploBox uses its older rows: WoW does not let addons rebind those in combat, so a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
 
 ### Status box
 
