@@ -54,6 +54,9 @@ test("/hb team sends none for unknown roles and the follower keeps its own role"
 	party("Elya", "Nyra")
 	login({}, { leader = "Haplo", roles = { Haplo = "tank" } })
 	SlashCmdList.HAPLOBOX("team")
+	eq(#sentMatching("^M|"), 0, "new members wait for confirmation")
+	assert(W.popup and W.popup.text:find("add Elya, Nyra to your team"), "confirmation popup")
+	clickPopup(1)
 	local m = sentMatching("^M|")[1]
 	eq(m.msg, "M|Haplo|Haplo=tank;Elya=none;Nyra=none", "wire")
 	-- the follower's side

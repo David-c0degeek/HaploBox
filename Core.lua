@@ -107,20 +107,23 @@ local function print_(msg) DEFAULT_CHAT_FRAME:AddMessage("|cff33ccffHaploBox|r "
 local function debug(msg) if HB.db and HB.db.debug then print_("|cff888888" .. msg .. "|r") end end
 HB.print, HB.debug, HB.secret = print_, debug, secret
 
-local myRealm = str(GetRealmName and GetRealmName())
-myRealm = myRealm and myRealm:gsub("%s", "") or nil
+local myRealm = str(GetNormalizedRealmName and GetNormalizedRealmName()) or str(GetRealmName and GetRealmName())
+myRealm = myRealm and myRealm:gsub("%s", ""):lower() or nil
 
--- Names are compared case-insensitively, with our own realm suffix removed.
+-- Names are compared case-insensitively. A realm suffix loses its spaces (addon
+-- senders never have them, unit names may), and our own realm suffix is removed, so
+-- "Name", "Name-MyRealm" and "Name-My Realm" match. Other realms stay distinct.
 -- WoW Forever uses "Name Surname", normal realms "Name" or "Name-Realm".
 function HB.Norm(name)
 	name = str(name)
 	if not name then return nil end
-	name = name:match("^%s*(.-)%s*$")
-	if myRealm then
-		local base, realm = name:match("^(.-)%-([^%-]+)$")
-		if base and realm and realm:gsub("%s", "") == myRealm then name = base end
+	name = name:match("^%s*(.-)%s*$"):lower()
+	local base, realm = name:match("^(.-)%-([^%-]+)$")
+	if base and realm and base ~= "" then
+		realm = realm:gsub("%s", "")
+		name = (realm == myRealm or realm == "") and base or (base .. "-" .. realm)
 	end
-	return name:lower()
+	return name
 end
 
 function HB.UnitIdent(unit)
@@ -298,49 +301,168 @@ end
 HB.formatToPattern = formatToPattern
 
 -- ---------------------------------------------------------------- loot
--- true / false when the client can tell, nil when it cannot read the loot method
-function HB.IsFFA()
-	if C_PartyInfo and C_PartyInfo.GetLootMethod then
-		local ok, m = pcall(C_PartyInfo.GetLootMethod)
-		if ok and m ~= nil then
-			if type(m) == "string" then return m == "freeforall" end
-			if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then return m == Enum.LootMethod.Freeforall end
+-- Who is in my group. "solo"; "team" when every member is in the team list;
+-- "mixed" when someone is not; "uncertain" when a name is not known yet (the game
+-- reports "Unknown" for a moment after a join) or the unit count does not add up.
+-- Also returns a key of the sorted names and the list of outsiders.
+function HB.GroupStatus()
+	if not IsInGroup() then return "solo", "", {} end
+	local raid = IsInRaid()
+	local units = { "player" }
+	for i = 1, raid and 40 or 4 do units[#units + 1] = raid and ("raid" .. i) or ("party" .. i) end
+	local unknown = HB.Norm(UNKNOWNOBJECT or "Unknown")
+	local keys, outsiders, seen, count, unsure = {}, {}, {}, 0, false
+	for _, u in ipairs(units) do
+		if UnitExists(u) then
+			local name = HB.UnitIdent(u)
+			local k = HB.Norm(name)
+			if not k or k == unknown then
+				unsure = true
+			elseif not seen[k] then  -- in a raid, "player" is also one of the raid units
+				seen[k] = true
+				count = count + 1
+				keys[#keys + 1] = k
+				if not HB.IsTeamName(name) then outsiders[#outsiders + 1] = name end
+			end
 		end
 	end
-	if GetLootMethod then
-		local ok, m = pcall(GetLootMethod)
-		if ok and m ~= nil then
-			if type(m) == "string" then return m == "freeforall" end
-			if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then return m == Enum.LootMethod.Freeforall end
+	if count ~= GetNumGroupMembers() then unsure = true end
+	table.sort(keys)
+	local key = table.concat(keys, ",")
+	if unsure then return "uncertain", key, outsiders end
+	return #outsiders > 0 and "mixed" or "team", key, outsiders
+end
+
+local LOOT_NAMES = { freeforall = "free for all", group = "group loot" }
+local LOOT_ENUM = { freeforall = "Freeforall", group = "Group" }
+
+-- The current loot method as "freeforall", "group", another name, or nil when the
+-- client cannot tell.
+local function lootMethod()
+	local reverse = {}
+	if Enum and Enum.LootMethod then
+		for k, v in pairs(LOOT_ENUM) do
+			if Enum.LootMethod[v] ~= nil then reverse[Enum.LootMethod[v]] = k end
+		end
+	end
+	for _, get in ipairs({ C_PartyInfo and C_PartyInfo.GetLootMethod or false, GetLootMethod or false }) do
+		if get then
+			local ok, m = pcall(get)
+			if ok and m ~= nil then
+				if type(m) == "string" then return m end
+				return reverse[m] or ("method " .. tostring(m))
+			end
 		end
 	end
 	return nil
 end
+HB.LootMethod = lootMethod
 
-function HB.SetFFA(quiet)
+-- true / false when the client can tell, nil when it cannot read the loot method
+function HB.IsFFA()
+	local m = lootMethod()
+	if m == nil then return nil end
+	return m == "freeforall"
+end
+
+-- Asks the game for a loot method. The result is checked a moment later, because a
+-- call that does not fail can still be turned down by the server.
+local function setLootMethod(method, quiet)
+	local label = LOOT_NAMES[method]
 	if not IsInGroup() then if not quiet then print_("not in a group") end return end
 	if UnitIsGroupLeader and not UnitIsGroupLeader("player") then
 		if not quiet then print_("only the group leader can change the loot method") end
 		return
 	end
-	if HB.IsFFA() then if not quiet then print_("loot is already free for all") end return end
+	if lootMethod() == method then if not quiet then print_("loot is already " .. label) end return end
 	local tries = {}
+	local enum = Enum and Enum.LootMethod and Enum.LootMethod[LOOT_ENUM[method]]
 	if C_PartyInfo and C_PartyInfo.SetLootMethod then
-		if Enum and Enum.LootMethod and Enum.LootMethod.Freeforall ~= nil then
-			tries[#tries + 1] = function() C_PartyInfo.SetLootMethod(Enum.LootMethod.Freeforall) end
-		end
-		tries[#tries + 1] = function() C_PartyInfo.SetLootMethod("freeforall") end
+		if enum ~= nil then tries[#tries + 1] = function() return C_PartyInfo.SetLootMethod(enum) end end
+		tries[#tries + 1] = function() return C_PartyInfo.SetLootMethod(method) end
 	end
-	if SetLootMethod then tries[#tries + 1] = function() SetLootMethod("freeforall") end end
+	if SetLootMethod then tries[#tries + 1] = function() return SetLootMethod(method) end end
 	for i, fn in ipairs(tries) do
-		local ok, err = pcall(fn)
-		debug("SetLootMethod try " .. i .. ": " .. tostring(ok) .. " " .. tostring(err))
-		if ok then
-			if not quiet then print_("loot set to free for all") end
+		local ok, r = pcall(fn)
+		debug("SetLootMethod " .. method .. " try " .. i .. ": " .. tostring(ok) .. " " .. tostring(r))
+		if ok and r ~= false then
+			C_Timer.After(1.5, function()
+				local now = lootMethod()
+				if now == method then
+					print_("loot set to " .. label)
+				elseif now == nil then
+					print_("asked for " .. label .. "; this client cannot show whether it changed")
+				else
+					print_("|cffffaa00could not set loot to " .. label .. "|r (it is " .. (LOOT_NAMES[now] or now) .. ")")
+				end
+			end)
 			return true
 		end
 	end
-	print_("could not change the loot method on this client")
+	print_("|cffffaa00this client cannot change the loot method to " .. label .. "|r")
+end
+
+local function outsiderText(outsiders)
+	local names = {}
+	for i, n in ipairs(outsiders) do names[i] = shortName(n) end
+	return table.concat(names, ", ")
+end
+
+-- /hb ffa. Never while someone outside the team is in the group, or while a
+-- member's name is not known yet.
+function HB.SetFFA(quiet)
+	local status, _, outsiders = HB.GroupStatus()
+	if status == "mixed" then
+		if not quiet then print_("not free for all: " .. outsiderText(outsiders) .. " is not in the team") end
+		return
+	end
+	if status == "uncertain" then
+		if not quiet then print_("not free for all: a group member's name is not known yet, try again") end
+		return
+	end
+	return setLootMethod("freeforall", quiet)
+end
+
+-- Runs after roster and team changes, on the leader with "Free-for-all loot" on.
+-- Team only: free for all, once per new roster or team, so a method chosen by hand
+-- stays until the group or team changes. Someone outside the team: free for all
+-- becomes group loot, every time. Unknown names: look again shortly.
+local lootToken, lootDoneKey, lootRetries = nil, nil, 0
+local function checkLoot()
+	if not IsInGroup() then lootDoneKey = nil return end
+	if not (HB.db and HB.db.autoFFA and HB.IAmLeader()) then return end
+	if UnitIsGroupLeader and not UnitIsGroupLeader("player") then return end
+	local status, key, outsiders = HB.GroupStatus()
+	if status == "uncertain" then
+		lootRetries = lootRetries + 1
+		if lootRetries <= 15 then HB.ScheduleLootCheck(2) end
+		return
+	end
+	lootRetries = 0
+	if status == "mixed" then
+		lootDoneKey = nil
+		if lootMethod() == "freeforall" then
+			print_(outsiderText(outsiders) .. " is not in the team: switching free for all to group loot")
+			setLootMethod("group", true)
+		end
+		return
+	end
+	local teamKey = key .. "|" .. tostring(HB.Norm(HB.Leader()))
+	for _, n in ipairs(HaploBoxTeam.order or {}) do teamKey = teamKey .. "," .. tostring(HB.Norm(n)) end
+	if lootDoneKey == teamKey then return end
+	lootDoneKey = teamKey
+	if lootMethod() ~= "freeforall" then setLootMethod("freeforall", true) end
+end
+
+-- A delayed check looks at the group again when it runs; only the newest one runs.
+function HB.ScheduleLootCheck(delay)
+	local token = {}
+	lootToken = token
+	C_Timer.After(delay or 1, function()
+		if lootToken ~= token then return end
+		lootToken = nil
+		checkLoot()
+	end)
 end
 
 -- ---------------------------------------------------------------- team sync
@@ -358,8 +480,7 @@ local function isTeamName(name)
 	if not k then return false end
 	if HB.IsLeaderName(name) then return true end
 	for _, n in ipairs(HaploBoxTeam.order or {}) do if HB.Norm(n) == k then return true end end
-	for n in pairs(HaploBoxTeam.roles or {}) do if HB.Norm(n) == k then return true end end
-	return false
+	return false  -- a stored role alone does not make someone part of the team
 end
 HB.IsTeamName = isTeamName
 
@@ -385,6 +506,7 @@ local function setRole(name, role)
 end
 
 local function refreshTeam()
+	if HB.ScheduleLootCheck then HB.ScheduleLootCheck(1) end
 	if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
 end
@@ -430,11 +552,23 @@ function HB.TeamSummary()
 	return #parts > 0 and table.concat(parts, ", ") or "no team set"
 end
 
-function HB.SetTeamFromGroup()
+-- Group members who are not in the team yet join it only after the leader confirms
+-- them by name in a popup. The popup is tied to the exact group it showed: if the
+-- group changed before the click, nothing happens and the leader presses again.
+local ENROLL_POPUP = "HAPLOBOX_TEAM_ENROLL"
+local enrollKey
+
+function HB.SetTeamFromGroup(confirmedKey)
 	if not IsInGroup() or IsInRaid() then print_("join a party (not a raid) with your team first") return end
+	local status, key = HB.GroupStatus()
+	if status == "uncertain" then print_("a group member's name is not known yet, try again in a moment") return end
+	if confirmedKey and confirmedKey ~= key then
+		print_("the group changed; press Send team again to see the new names")
+		return
+	end
 	local me = clean(HB.UnitIdent("player"))
 	local units = { "player", "party1", "party2", "party3", "party4" }
-	local list, wire = {}, {}
+	local list, wire, new = {}, {}, {}
 	for _, u in ipairs(units) do
 		if UnitExists(u) then
 			local name = clean(HB.UnitIdent(u))
@@ -442,9 +576,33 @@ function HB.SetTeamFromGroup()
 				local role = HB.RoleOf(name)
 				list[#list + 1] = { name = name, role = role }
 				wire[#wire + 1] = name .. "=" .. (role or "none")
+				if u ~= "player" and not isTeamName(name) then new[#new + 1] = shortName(name) end
 			end
 		end
 	end
+	if #new > 0 and confirmedKey ~= key then
+		enrollKey = key
+		local text = table.concat(new, ", ")
+		print_("add " .. text .. " to the team? Confirm in the popup.")
+		if StaticPopupDialogs and StaticPopup_Show then
+			StaticPopupDialogs[ENROLL_POPUP] = StaticPopupDialogs[ENROLL_POPUP] or {
+				text = "HaploBox: add %s to your team? Add only your own characters.",
+				button1 = ACCEPT or "Accept",
+				button2 = CANCEL or "Cancel",
+				OnAccept = function()
+					local k = enrollKey
+					enrollKey = nil
+					if k then HB.SetTeamFromGroup(k) end
+				end,
+				OnCancel = function() enrollKey = nil end,
+				timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+			}
+			if StaticPopup_Hide then StaticPopup_Hide(ENROLL_POPUP) end
+			StaticPopup_Show(ENROLL_POPUP, text)
+		end
+		return
+	end
+	enrollKey = nil
 	applyTeam(me, list)
 	send("M|" .. me .. "|" .. table.concat(wire, ";"))
 	print_("team set and sent: " .. HB.TeamSummary())
@@ -984,12 +1142,13 @@ end
 
 local ffaGroupSize = 0
 function handlers.GROUP_ROSTER_UPDATE()
-	-- Only when someone joins: setting the loot method fires GROUP_ROSTER_UPDATE again,
-	-- and every roster update resets other addons' party state.
+	-- Follow queries and roles only when someone joins: every roster update resets
+	-- other addons' party state. The loot check is safe to repeat (see checkLoot).
 	if not IsInGroup() then
 		HB.wasLeaderPresent = nil  -- a later group starts without a leader to wait for
 		dropQueued(true, false)    -- group messages queued for the group we left
 	end
+	lootRetries = 0
 	local size = IsInGroup() and GetNumGroupMembers() or 0
 	local grew = size > ffaGroupSize
 	ffaGroupSize = size
@@ -997,8 +1156,10 @@ function handlers.GROUP_ROSTER_UPDATE()
 		C_Timer.After(2, queryFollowStates)
 		C_Timer.After(1.5, HB.ApplyRoles)
 	end
-	if grew and HB.db.autoFFA and HB.IAmLeader() and IsInGroup() and HB.IsFFA() ~= true then
-		C_Timer.After(1, function() HB.SetFFA(true) end)
+	if IsInGroup() then
+		HB.ScheduleLootCheck(1)
+	else
+		lootDoneKey, lootToken = nil, nil  -- a new group gets free for all again
 	end
 	if HB.db.autoLeaveWithLeader and not HB.IAmLeader() and IsInGroup() and HB.Leader() then
 		local present = inGroup(HB.Leader())

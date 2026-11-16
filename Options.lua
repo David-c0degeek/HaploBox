@@ -8,7 +8,7 @@ local TOGGLES = {
 	{ "relayErrors", "Send my cast errors (range, line of sight, mana) to the leader" },
 	{ "showRelayedErrors", "Leader: show followers' cast errors in chat" },
 	{ "alertOnFollowStart", "Leader: also show a message when a follower starts following" },
-	{ "autoFFA", "Leader: set free-for-all loot when the group changes" },
+	{ "autoFFA", "Leader: free-for-all loot for the team only, group loot when someone else joins" },
 	{ "autoRoleCheck", "Answer group finder role checks with my team role" },
 	{ "autoLeaveWithLeader", "Leave the group when the leader leaves" },
 	{ "followFlights", "Fly to the leader's flight destination when my flight map opens" },

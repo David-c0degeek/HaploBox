@@ -110,7 +110,7 @@ Forwarded whispers and replies go privately between the follower and the leader,
 
 - **Invites:** followers accept group invites from the leader.
 - **Quests:** when the leader accepts a quest, it is shared with the group and the followers accept it. Followers accept shared quests only from your team, not from other players in the group. A failed share plays a sound and tells you why. Prefer every character to share? Set **Share quests I accept** to `all` in the options panel.
-- **Loot:** the leader sets free-for-all loot when someone joins, or on demand with `/hb ffa`. WoW Forever has no `/ffa` command.
+- **Loot:** when the group changes, the leader sets free-for-all loot if everyone in the group is on the team. If someone from outside the team is in the group, free for all becomes group loot, and `/hb ffa` is refused until they leave. HaploBox also waits while a member's name still shows as Unknown. A loot method you pick yourself stays until the group or the team changes. HaploBox reads the method back and tells you if the change did not take. WoW Forever has no `/ffa` command.
 - **Roles:** each character sets its own party role (tank, healer or damage) and its group finder roles from its team role, answers role polls and answers group finder role checks.
 - **Quest tracker:** Blizzard's quest tracker is hidden, which keeps five screens tidy. Turn it back on with `/hb tracker` or the options panel.
 - **Flights:** when the leader takes a flight, each follower flies to the same place as soon as it opens its own flight map (within 2 minutes). Followers that do not know that flight path get a message instead.
@@ -127,6 +127,8 @@ Each feature has its own checkbox under **Options > AddOns > HaploBox** (or type
 3. On the **leader**, open the options (**Options > AddOns > HaploBox**) and click **Make this toon the leader**. The current group becomes your team and is sent to every character. (Or type `/hb team`.)
 4. Each follower shows a popup: **Haplo wants to lead your team**. Click **Accept** on each one (one click if you mirror clicks to all windows). A character only takes a team from the leader it already knows, so nobody else in your group can take over your characters. (Or type `/hb accept`, or use the key binding.)
 5. On each character, pick its role in the same panel: **tank**, **healer** or **dps**. The toon with the healer role is the one followers can follow. (Or type `/hb role healer`.)
+
+Group members who are not on the team yet are named in a confirmation popup first. Add only your own characters: team members are trusted with team messages. If the group changes before you click, nothing is added and you press the button again.
 
 That's all. The leader alert, the team frame and the automation now know who is who. Swapped a character? Group the new team and click **Make this toon the leader** (or **Send team** on the frame, or `/hb team`) again; followers that already know the leader take it without a popup. Changed the leader? Each follower accepts the popup once.
 
@@ -166,7 +168,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | Command | What it does |
 |---|---|
 | `/hb r <text>` | Leader: reply to the last forwarded whisper. |
-| `/hb ffa` | Set free-for-all loot (group leader only). |
+| `/hb ffa` | Set free-for-all loot (group leader only, and only when everyone in the group is on the team). |
 | `/hb share` | Share every quest in your log with the group. |
 | `/hb tracker` | Hide or show Blizzard's quest tracker (hidden by default). |
 | `/hb sound <event> <value\|off>` | Change a sound. |

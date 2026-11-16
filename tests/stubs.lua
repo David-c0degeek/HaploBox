@@ -77,7 +77,7 @@ function IsInGroup(category)
 end
 function IsInRaid() return W.raid end
 function GetNumGroupMembers() local n = groupSize() return n > 0 and (W.raid and n or n + 1) or 0 end
-function UnitIsGroupLeader() return true end
+function UnitIsGroupLeader() return not W.notGroupLeader end
 function InCombatLockdown() return W.combat end
 LE_PARTY_CATEGORY_INSTANCE = 2
 
@@ -114,7 +114,7 @@ end
 -- addon messages
 Enum = {
 	SendAddonMessageResult = { Success = 0, AddonMessageThrottle = 3, ChannelThrottle = 8 },
-	LootMethod = { Freeforall = 0 },
+	LootMethod = { Freeforall = 0, Group = 3 },
 }
 C_ChatInfo = {
 	RegisterAddonMessagePrefix = function() end,
@@ -200,7 +200,19 @@ function AcceptGroup() W.accepted = W.accepted + 1 end
 function AcceptQuest() W.questAccepted = W.questAccepted + 1 end
 function HideUIPanel() end
 function GetQuestID() return 42 end
-C_PartyInfo = { LeaveParty = function() W.left = W.left + 1 end, GetLootMethod = function() return 0 end }
+-- loot: W.loot is the method (Enum value); W.lootSets lists every change asked for;
+-- W.lootRefused makes the server ignore changes; W.noLootApi removes both calls.
+W.loot, W.lootSets = 0, {}
+C_PartyInfo = {
+	LeaveParty = function() W.left = W.left + 1 end,
+	GetLootMethod = function() if not W.noLootApi then return W.loot end end,
+	SetLootMethod = function(m)
+		if W.noLootApi then error("no loot API") end
+		assert(type(m) == "number", "enum expected")
+		W.lootSets[#W.lootSets + 1] = m
+		if not W.lootRefused then W.loot = m end
+	end,
+}
 function SetLFGRoles(...) W.lfgRoles = { ... } end
 function GetLFGRoles() return false end
 function CompleteLFGRoleCheck() end
