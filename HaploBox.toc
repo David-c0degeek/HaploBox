@@ -7,5 +7,6 @@
 ## IconTexture: Interface\Icons\Ability_Hunter_BeastCall
 
 Core.lua
+Death.lua
 Party.lua
 Options.lua

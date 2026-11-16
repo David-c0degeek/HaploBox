@@ -49,7 +49,13 @@ function UnitInParty() return true end
 function UnitInRaid() return nil end
 function UnitClass() return "Mage", "MAGE" end
 function UnitIsConnected() return true end
-function UnitIsDeadOrGhost() return false end
+function UnitIsDeadOrGhost(u) return u == "player" and (W.dead or W.ghost) or false end
+function UnitIsGhost(u) return u == "player" and W.ghost or false end
+function RepopMe() W.released = (W.released or 0) + 1 end
+function AcceptResurrect() W.resurrected = (W.resurrected or 0) + 1 end
+function RetrieveCorpse() W.retrieved = (W.retrieved or 0) + 1 end
+function GetCorpseRecoveryDelay() return W.corpseDelay or 0 end
+function StaticPopup_Visible(which) return W.deathPopup == which end
 function UnitHealth() return 50 end
 function UnitHealthMax() return 100 end
 function UnitPower() return 10 end
@@ -131,6 +137,9 @@ end
 -- frames: every method exists; a few keep state the tests read back
 local frameMethods = {
 	GetFrameLevel = function() return 1 end,
+	GetFrameStrata = function() return "DIALOG" end,
+	SetPoint = function(self, ...) self.point = { ... } end,
+	ClearAllPoints = function(self) self.point = nil end,
 	GetFont = function() return "font", 10 end,
 	GetEffectiveScale = function() return 1 end,
 	GetStringWidth = function() return 10 end,

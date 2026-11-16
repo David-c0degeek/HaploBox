@@ -1181,6 +1181,43 @@ if TakeTaxiNode then
 	end)
 end
 
+-- ---------------------------------------------------------------- team death controls
+-- One-shot requests: a toon that is not ready waits for another click.
+-- Never queue a resurrection for later or accept spirit-healer penalties.
+local function deathAction(action)
+	if not UnitIsDeadOrGhost("player") then return end
+	local ghost = UnitIsGhost and UnitIsGhost("player")
+	if action == "release" then
+		if not UnitIsGhost or ghost or not RepopMe then return end
+		if IsEncounterSuppressingRelease and IsEncounterSuppressingRelease() then return end
+		if HasNoReleaseAura and HasNoReleaseAura() then return end
+		if IsFalling and IsFalling() and not (IsOutOfBounds and IsOutOfBounds()) then return end
+		RepopMe()
+	elseif action == "resurrect" then
+		if not StaticPopup_Visible or not GetCorpseRecoveryDelay then return end
+		local noTimer = StaticPopup_Visible("RESURRECT_NO_TIMER")
+		if AcceptResurrect and (noTimer or StaticPopup_Visible("RESURRECT")
+			or StaticPopup_Visible("RESURRECT_NO_SICKNESS")) then
+			if noTimer or GetCorpseRecoveryDelay() == 0 then
+				AcceptResurrect()
+				StaticPopup_Hide("RESURRECT")
+				StaticPopup_Hide("RESURRECT_NO_SICKNESS")
+				StaticPopup_Hide("RESURRECT_NO_TIMER")
+			end
+		elseif ghost and RetrieveCorpse and StaticPopup_Visible("RECOVER_CORPSE")
+			and GetCorpseRecoveryDelay() == 0 then
+			RetrieveCorpse()
+		end
+	end
+end
+
+function HB.TeamDeathAction(action)
+	if action ~= "release" and action ~= "resurrect" then return end
+	if not HB.IAmLeader() then print_("only the team leader can do that") return end
+	send("D|" .. action)
+	deathAction(action)
+end
+
 -- ---------------------------------------------------------------- protocol
 -- Every addon message is <kind>|<fields>. The table says who sends each kind to whom,
 -- and whom a receiver accepts it from ("team": a name in this toon's team list,
@@ -1194,6 +1231,7 @@ end
 --   S     toon -> group        S|lvl|xp|xpMax|rested|copper|free|slots team
 --   E     follower -> group    E|<error code> (see ERRORS)             team
 --   P     leader -> group      P|<flight destination name>             leader
+--   D     leader -> group      D|release or D|resurrect                 leader
 --   W     follower -> leader   W|<flags>|<from>|<i>|<n>|<text>         team
 --   Y     leader -> toon       Y|<toon>|<to>|<i>|<n>|<text>            leader
 --   K     toon -> leader       K|<to>|ok|fail|hidden|off               team
@@ -1202,7 +1240,7 @@ end
 -- versions send them. Anything else (older HELLO messages included) is dropped.
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
-	P = "leader", W = "team", Y = "leader", K = "team",
+	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
 }
 local WHISPER_KINDS = { W = true, Y = true, K = true }
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
@@ -1230,6 +1268,10 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
 	if kind == "P" then onLeaderFlight(sender, msg:sub(3)) return end
 	local _, code, arg = strsplit("|", msg)
+	if kind == "D" then
+		if msg == "D|release" or msg == "D|resurrect" then deathAction(code) end
+		return
+	end
 	if kind == "K" then onRelayResult(sender, code, arg) return end
 	if kind == "M" then onTeamMessage(sender, code, arg) return end
 	if kind == "R" then onRoleMessage(sender, code, arg) return end

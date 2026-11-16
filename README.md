@@ -38,6 +38,13 @@ Each row is one character:
 
 The **TEAM** line at the bottom adds it all up: free bag slots and the gold of the whole team. When a character has not reported yet (an older HaploBox, not logged in, or not in the team list), its row shows a dash and the total says `3 of 5`.
 
+On the leader, two team buttons appear below Blizzard's death, resurrection and corpse-recovery popup. They work even when the HaploBox team frame is hidden:
+
+- **Release team** releases dead characters to the graveyard; living characters and ghosts are skipped.
+- **Rezz team** accepts an available resurrection or reclaims a ghost's corpse when it is in range and the recovery timer has expired. It does not cast a resurrection spell or accept spirit-healer penalties. If a character is not ready, click again when it is.
+
+Install the updated addon on every character. Followers accept these commands only from their stored team leader.
+
 Click a row to target that character. `[@mouseover]` macros work on the rows, so your healer can heal straight from the frame. Characters out of range fade.
 
 WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
