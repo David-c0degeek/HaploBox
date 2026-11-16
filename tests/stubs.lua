@@ -14,7 +14,8 @@ W = {
 
 function GetTime() return W.now end
 function GetRealmName() return W.realm end
-function issecretvalue() return false end
+-- W.secrets: values the client would mark secret (tests pick odd numbers for them)
+function issecretvalue(v) return W.secrets ~= nil and v ~= nil and W.secrets[v] == true end
 function strsplit(sep, s)
 	local out, pos = {}, 1
 	while true do
@@ -56,11 +57,21 @@ function AcceptResurrect() W.resurrected = (W.resurrected or 0) + 1 end
 function RetrieveCorpse() W.retrieved = (W.retrieved or 0) + 1 end
 function GetCorpseRecoveryDelay() return W.corpseDelay or 0 end
 function StaticPopup_Visible(which) return W.deathPopup == which end
-function UnitHealth() return 50 end
+function UnitHealth(u) return W.health and W.health[u] or 50 end
 function UnitHealthMax() return 100 end
-function UnitPower() return 10 end
+function UnitPower(u) return W.mana and W.mana[u] or 10 end
 function UnitPowerMax() return 20 end
-function UnitPowerType() return 0, "MANA" end
+function UnitPowerType(u) if W.rage and W.rage[u] then return 1, "RAGE" end return 0, "MANA" end
+-- W.incoming[u]: incoming heals; W.casts[u] / W.channels[u]: { name, startMS, endMS }
+function UnitGetIncomingHeals(u) return W.incoming and W.incoming[u] end
+local function castInfo(t)
+	if not t then return nil end
+	return t[1], t[1], nil, t[2], t[3]
+end
+function UnitCastingInfo(u) return castInfo(W.casts and W.casts[u]) end
+function UnitChannelInfo(u) return castInfo(W.channels and W.channels[u]) end
+WOW_PROJECT_CLASSIC, WOW_PROJECT_MAINLINE = 2, 1
+WOW_PROJECT_ID = 2
 function UnitInRange() return true, true end
 function UnitLevel() return 10 end
 function UnitXP() return 5 end
@@ -154,6 +165,9 @@ local frameMethods = {
 	SetScript = function(self, k, fn) self.scripts = self.scripts or {} self.scripts[k] = fn end,
 	IsProtected = function() return false end,
 	SetChecked = function(self, v) self.checked = v and true or false end,
+	SetValue = function(self, v) self.value = v end,
+	GetValue = function(self) return self.value end,
+	SetMinMaxValues = function(self, a, b) self.min, self.max = a, b end,
 	GetChecked = function(self) return self.checked end,
 }
 local events = {}

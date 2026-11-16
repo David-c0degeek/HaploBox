@@ -39,6 +39,20 @@ local BUFF_WARN = 120          -- red border and timer from 2 minutes left
 
 local secret = HB.secret
 local container, rows = nil, {}
+
+-- Extra row displays (Indicators.lua and later files) plug in here instead of
+-- growing this file. Each list holds functions called with the row:
+--   create: once, after the row is built      size: after every resize (out of combat)
+--   refresh: full update                       clear: the row is stale or its unit changed
+-- HB.AddRowEvent(event, fn) calls fn(row, ...) for unit events of a shown row.
+-- Hooks only add textures and status bars; they never touch the secure row itself.
+HB.RowHooks = { create = {}, size = {}, refresh = {}, clear = {} }
+local function runHooks(list, r, ...)
+	for _, fn in ipairs(HB.RowHooks[list]) do
+		local ok, err = pcall(fn, r, ...)
+		if not ok then HB.debug("row hook " .. list .. ": " .. tostring(err)) end
+	end
+end
 local unitRow = {}          -- unit token -> row
 local pendingLayout = false
 local displayPrefix         -- shared first word of all team names, hidden in the rows
@@ -233,6 +247,7 @@ local function sizeRow(r)
 	r.box:SetPoint("TOPLEFT", r, "TOPLEFT", W + GAP, 0)
 	r.box:SetSize(BOX_W, FH)
 	r.box.label:SetShown(FH >= 32)
+	runHooks("size", r)
 end
 
 local function createRow(i)
@@ -304,6 +319,7 @@ local function createRow(i)
 	box.label:SetPoint("BOTTOM", 0, 4)
 	box.label:SetFont(box.label:GetFont(), 9, "")
 	r.box = box
+	runHooks("create", r)
 	sizeRow(r)
 	return r
 end
@@ -361,6 +377,7 @@ local function showStale(r)
 	r.moneyText:SetText("")
 	setBox(r, C.unknown, nil, "?")
 	r:SetAlpha(0.35)
+	runHooks("clear", r)
 end
 
 local function markStaleRows()
@@ -639,6 +656,8 @@ end
 
 local function updateRow(r)
 	updateColors(r) updateHealth(r) updatePower(r) updateStatus(r) updateFocus(r) updateStats(r) updateBuffs(r) updateRange(r)
+	if r.stale then return end
+	runHooks("refresh", r)
 end
 
 function HB.RefreshPartyFrame()
@@ -866,15 +885,23 @@ function HB.LayoutPartyFrame()
 	for i, name in ipairs(names) do
 		local r = rows[i] or createRow(i)
 		rows[i] = r
+		local unit = unitForName(name)
+		if r.name ~= name or r.unit ~= unit then runHooks("clear", r) end
 		r.name = name
 		r.stale = nil
-		r.unit = unitForName(name)
+		r.unit = unit
 		r:SetAttribute("unit", r.unit)
 		r.nameText:SetText(displayName(name))
 		if r.unit then unitRow[r.unit] = r end
 		r:Show()
 	end
-	for i = #names + 1, #rows do rows[i]:Hide() rows[i]:SetAttribute("unit", nil) end
+	for i = #names + 1, #rows do
+		local r = rows[i]
+		if r.name or r.unit then runHooks("clear", r) end
+		r.name, r.unit = nil, nil
+		r:Hide()
+		r:SetAttribute("unit", nil)
+	end
 	sizeContainer()
 	updateLockUI()
 	container:Show()
@@ -908,6 +935,14 @@ end
 
 -- ---------------------------------------------------------------- events
 local ev = CreateFrame("Frame")
+local rowEvents = {}  -- event -> hook functions (HB.AddRowEvent)
+function HB.AddRowEvent(event, fn)
+	if not rowEvents[event] then
+		rowEvents[event] = {}
+		pcall(ev.RegisterEvent, ev, event)  -- some events do not exist on every client
+	end
+	table.insert(rowEvents[event], fn)
+end
 local unitEvents = {
 	UNIT_HEALTH = updateHealth, UNIT_MAXHEALTH = updateHealth, UNIT_CONNECTION = updateRow,
 	UNIT_POWER_UPDATE = updatePower, UNIT_POWER_FREQUENT = updatePower,
@@ -916,7 +951,7 @@ local unitEvents = {
 	UNIT_AURA = updateBuffs,
 }
 
-ev:SetScript("OnEvent", function(_, event, arg1)
+ev:SetScript("OnEvent", function(_, event, arg1, ...)
 	if event == "PLAYER_LOGIN" then
 		container = CreateFrame("Frame", "HaploBoxPartyFrame", UIParent)
 		container:SetMovable(true)
@@ -940,6 +975,17 @@ ev:SetScript("OnEvent", function(_, event, arg1)
 	end
 	if not container then return end
 	local fn = unitEvents[event]
+	local extra = rowEvents[event]
+	if extra then
+		local r = arg1 and unitRow[arg1]
+		if r and r:IsShown() and not r.stale then
+			for _, h in ipairs(extra) do
+				local ok, err = pcall(h, r, arg1, ...)
+				if not ok then HB.debug(event .. ": " .. tostring(err)) end
+			end
+		end
+		if not fn then return end
+	end
 	if fn then
 		local r = arg1 and unitRow[arg1]
 		if r and r:IsShown() then

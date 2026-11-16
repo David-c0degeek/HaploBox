@@ -31,6 +31,9 @@ local SECTIONS = {
 		{ "teamShowGold", "toggle", "Gold per character and team total" },
 		{ "teamShowBags", "toggle", "Free bag slots per character and team total" },
 		{ "teamShowBuffs", "toggle", "Group buffs with timers" },
+		{ "teamHealPrediction", "toggle", "Incoming heals on the health bars (where the game reports them)" },
+		{ "teamCastBars", "toggle", "Cast and channel bar on the health bars" },
+		{ "teamManaRule", "toggle", "Five-second mana rule timer on the mana bars (Classic Era only)" },
 		{ "reset", "action", "Reset position and size", run = function() HB.ResetPartyPosition() end },
 	} },
 	{ id = "follow", title = "Follow & alerts", items = {
@@ -76,7 +79,10 @@ local SECTIONS = {
 HB.SETTINGS = SECTIONS
 
 -- the quick settings popup: display settings of the team frame on this account
-local QUICK = { "teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags", "teamShowBuffs" }
+local QUICK = {
+	"teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags",
+	"teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule",
+}
 
 local function findItem(key)
 	for _, sec in ipairs(SECTIONS) do

@@ -47,6 +47,12 @@ Install the updated addon on every character. Followers accept these commands on
 
 Click a row to target that character. `[@mouseover]` macros work on the rows, so your healer can heal straight from the frame. Characters out of range fade.
 
+The health bars can show more, all read from the game itself and each with its own setting under **Team frame**:
+
+- **Incoming heals:** a lighter part of the health bar shows heals on their way, on clients that report them. When the game hides the numbers, nothing extra is shown.
+- **Casts:** a thin yellow bar along the bottom of the health bar fills while a character casts; a green one empties while it channels. It disappears when the cast ends, fails or is interrupted.
+- **Five-second rule** (Classic Era only): after a character's mana goes down, a thin light bar on top of its mana bar runs down for five seconds. It is an estimate of the pause in spirit-based regeneration after spending mana: HaploBox sees only that mana went down, so a mana drain by an enemy starts it too. Free spells do not. On other clients it is not shown, because the rule is not known to apply there.
+
 WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
 
 ### Status box

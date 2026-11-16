@@ -54,6 +54,9 @@ local DEFAULTS = {
 	teamShowGold        = true,   -- team frame: gold per toon and the team total
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
+	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars, where the client reports them
+	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
+	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
 	autoPartyRole       = true,   -- set my party and group finder role from my team role
 	hideQuestTracker    = true,   -- hide Blizzard's quest tracker (objective tracker)
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
@@ -1639,6 +1642,7 @@ HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
 	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
 	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
+	teamHealPrediction = true, teamCastBars = true, teamManaRule = true,
 }
 HB.FRAME_KEYS = FRAME_KEYS
 
