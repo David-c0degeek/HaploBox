@@ -44,6 +44,10 @@ local SECTIONS = {
 		{ "teamBuffOverview", "toggle", "Window: every member's buffs" },
 		{ "teamDebuffOverview", "toggle", "Window: every member's debuffs" },
 		{ "reset", "action", "Reset position and size", run = function() HB.ResetPartyPosition() end },
+		{ "acceptSharedUI", "toggle", "Take the layout the leader shares", who = "followers" },
+		{ "shareUI", "action", "Share this layout with the team", run = function() HB.ShareUI() end,
+			help = "Leader: sends to the team" },
+		{ "undoUI", "action", "Undo the shared layout", run = function() HB.UndoSharedUI() end },
 	} },
 	{ id = "follow", title = "Follow & alerts", items = {
 		{ "alertOnFollowStart", "toggle", "Also show a message when a follower starts following", who = "leader" },

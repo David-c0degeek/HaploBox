@@ -1,5 +1,10 @@
 -- Test registration and shared setup. Loaded after the addon, before a test file.
 TEST_NAMES, TEST_FNS = {}, {}
+function reloadAddonFile(name)
+	local f = assert(loadstring(ADDON_SOURCE[name], "@" .. name))
+	f("HaploBox")
+end
+
 function test(name, fn)
 	TEST_NAMES[#TEST_NAMES + 1] = name
 	TEST_FNS[#TEST_FNS + 1] = fn

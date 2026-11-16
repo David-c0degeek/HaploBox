@@ -362,6 +362,9 @@ local function refreshOverview(kind)
 	o:SetHeight(18 + n * (ICON + 4) + ((#rows > n or #rows == 0) and 16 or 4))
 	o:Show()
 end
+HB.PlaceAuraOverviews = function()
+	for _, o in pairs(overviews) do place(o) end
+end
 HB.RefreshAuraOverviews = function()
 	refreshOverview("buffs")
 	refreshOverview("debuffs")

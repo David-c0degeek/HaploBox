@@ -11,4 +11,5 @@ Death.lua
 Party.lua
 Indicators.lua
 Auras.lua
+Share.lua
 Options.lua

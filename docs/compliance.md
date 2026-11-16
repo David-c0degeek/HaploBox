@@ -68,6 +68,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | Reply relay | Leader replies (`Y`) | Chat whisper from the follower to the stranger | Leader types the reply | Only from the stored leader | Kept; chat, not gameplay |
 | HoTs, required buffs, aura windows | Unit aura events, 1 s timer | Display only | None | Game data about group members | Display only; restricted data shows unknown |
 | Incoming heals, cast bars, mana timer | Unit events | Display on the team frame only | None | Game data about group members, as Blizzard's own frames show it | Display only; secret values never computed with |
+| Share UI layout | Leader confirms a popup | Display settings and positions on followers | Leader's click | Whisper to team members only; followers accept only from their leader, can turn it off and undo | Display only; no gameplay or team settings |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 
 Not built and not approved by this review: leader handover by window switch

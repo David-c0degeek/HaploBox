@@ -180,6 +180,7 @@ local frameMethods = {
 	SetValue = function(self, v) self.value = v end,
 	SetSize = function(self, w, h) self.width, self.height = w, h end,
 	GetWidth = function(self) return self.width end,
+	GetHeight = function(self) return self.height end,
 	EnableMouse = function(self, v) self.mouse = v and true or false end,
 	GetValue = function(self) return self.value end,
 	SetMinMaxValues = function(self, a, b) self.min, self.max = a, b end,

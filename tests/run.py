@@ -71,6 +71,9 @@ def fresh(test_file):
     load(lua, TESTS / "stubs.lua")
     for path in addon_files():
         load(lua, path, "HaploBox")
+    # reloadAddonFile("Share.lua") runs a file again: its locals start fresh, as after /reload
+    src = {p.name: p.read_text(encoding="utf-8") for p in addon_files()}
+    lua.globals().ADDON_SOURCE = lua.table_from(src)
     load(lua, TESTS / "helpers.lua")
     load(lua, test_file)
     return lua

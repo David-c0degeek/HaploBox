@@ -983,6 +983,12 @@ local function applyPosition()
 	else container:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 20, -200) end
 end
 
+-- Puts the frame where HB.db.partyPos says (UI sharing sets it from another toon).
+function HB.ApplyPartyPosition()
+	if container and not InCombatLockdown() then applyPosition() end
+end
+function HB.PartyFrameScale() return container and container:GetScale() or HB.db.partyScale or 1 end
+
 function HB.ResetPartyPosition()
 	if InCombatLockdown() then HB.print("not in combat") return end
 	HB.db.partyPos, HB.db.teamW, HB.db.teamRowH, HB.db.teamMiniW, HB.db.teamMiniH = nil, nil, nil, nil, nil

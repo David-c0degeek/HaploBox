@@ -58,6 +58,7 @@ local DEFAULTS = {
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
 	teamView            = "main", -- team frame on this account: "main" or "mini" (Mini Heal: big health tiles)
+	acceptSharedUI      = true,   -- followers: take the team frame layout the leader shares
 	teamShowHots        = true,   -- team frame: heal-over-time icons on the health bars
 	teamHotNames        = "",     -- HoT names, comma separated; empty = the built-in list
 	teamRequiredBuffs   = "",     -- buff names every member should have, comma separated; empty = off
@@ -235,7 +236,8 @@ function drainQueue()
 	sendRefillAt = now
 	while sendQueue[1] and sendTokens >= 1 do
 		local e = sendQueue[1]
-		local result = rawSend(e)
+		-- a check that no longer holds (the toon left the team or group) drops it unsent
+		local result = (e.check and not e.check()) and "fail" or rawSend(e)
 		e.tries = (e.tries or 0) + 1
 		if result == "throttled" and e.tries < SEND_TRIES then
 			sendTokens = 0
@@ -263,13 +265,13 @@ local function dropQueued(groupMsgs, whispers)
 	end
 end
 
-local function enqueue(msg, target, key, onFail, onOk)
+local function enqueue(msg, target, key, onFail, onOk, check)
 	if key then
 		for _, e in ipairs(sendQueue) do
 			if e.key == key then e.msg = msg return end
 		end
 	end
-	sendQueue[#sendQueue + 1] = { msg = msg, target = target, key = key, onFail = onFail, onOk = onOk }
+	sendQueue[#sendQueue + 1] = { msg = msg, target = target, key = key, onFail = onFail, onOk = onOk, check = check }
 	drainQueue()
 end
 
@@ -280,14 +282,15 @@ local function send(msg, key)
 end
 
 -- To one toon only, as an addon whisper. Never falls back to the group.
-local function whisper(target, msg, onFail, onOk)
+local function whisper(target, msg, onFail, onOk, check)
 	target = str(target)
 	if not target then
 		if onFail then onFail() end
 		return
 	end
-	enqueue(msg, target, nil, onFail, onOk)
+	enqueue(msg, target, nil, onFail, onOk, check)
 end
+HB.Whisper = whisper  -- for Share.lua
 
 local function leaderAlert(text, color)
 	if RaidNotice_AddMessage and RaidWarningFrame then
@@ -527,6 +530,7 @@ local function inGroup(name)
 	end
 	return false
 end
+HB.InGroup = inGroup
 
 local function setRole(name, role)
 	HaploBoxTeam.roles = HaploBoxTeam.roles or {}
@@ -925,6 +929,7 @@ local function splitText(head, text)
 	return nil
 end
 HB.SplitText = splitText
+HB.MAX_MSG = MAX_MSG
 
 -- Whispers text to one toon in pieces. onFail runs once if any piece fails; onDone
 -- runs once when the game has taken every piece.
@@ -1433,20 +1438,25 @@ end
 --   W     follower -> leader   W|<flags>|<from>|<i>|<n>|<text>         team
 --   Y     leader -> toon       Y|<toon>|<to>|<i>|<n>|<text>            leader
 --   K     toon -> leader       K|<to>|ok|fail|hidden|off               team
+--   U     leader -> toon       U|<id>|<i>|<n>|<piece> (UI settings)    leader, whisper only
+--   A     toon -> leader       A|<id>|<result>                         team, whisper only
 -- Group kinds count only on the group channel. W, Y and K go out as addon whispers
 -- (0.9.0 and later); they are also taken from the group channel, where older
 -- versions send them. Anything else (older HELLO messages included) is dropped.
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
+	U = "leader", A = "team",
 }
-local WHISPER_KINDS = { W = true, Y = true, K = true }
+local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true }
+local WHISPER_ONLY = { U = true, A = true }  -- shared UI settings: never on a group channel
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
 local function accepted(kind, channel, sender)
 	local policy = POLICY[kind]
 	if not policy then return false end
 	if not GROUP_CHANNELS[channel] and not (channel == "WHISPER" and WHISPER_KINDS[kind]) then return false end
+	if WHISPER_ONLY[kind] and channel ~= "WHISPER" then return false end
 	if policy == "leader" then return HB.IsLeaderName(sender) end
 	if policy == "team" then return isTeamName(sender) end
 	return true  -- "offer": onTeamMessage checks the sender itself and may ask for /hb accept
@@ -1462,6 +1472,10 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 	end
 	-- whisper messages carry free text (which may contain "|"), so they are matched whole
 	if kind == "W" then onWhisperForward(sender, msg) return end
+	if kind == "U" or kind == "A" then
+		if HB.OnShareMessage then HB.OnShareMessage(kind, sender, msg) end
+		return
+	end
 	if kind == "Y" then onReplyRequest(sender, msg) return end
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
 	if kind == "P" then onLeaderFlight(sender, msg:sub(3)) return end
@@ -1722,6 +1736,7 @@ local function help()
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
 	print_("  /hb frame main | mini - the full view, or Mini Heal: big health tiles for small windows")
+	print_("  /hb frame share - leader: send this layout to the team; /hb frame undo - put yours back")
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
 	print_("  /hb frame xp | gold | bags | buffs - show or hide level and XP, gold, free bag slots, buffs")
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
@@ -1813,6 +1828,10 @@ SlashCmdList.HAPLOBOX = function(input)
 			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags", buffs = "teamShowBuffs" })[a]
 			HB.SetOption(key, not HB.db[key])
 			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden") .. later)
+		elseif a == "share" then
+			if HB.ShareUI then HB.ShareUI() end
+		elseif a == "undo" then
+			if HB.UndoSharedUI then HB.UndoSharedUI() end
 		elseif a == "reset" then
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
