@@ -259,6 +259,8 @@ To check changes outside the game, run `python tests/run.py` (needs `pip install
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.
 - **Settings:** stored per account in `HaploBoxDB`. The team (leader, roles, order) is stored in `HaploBoxTeam`.
 
+**Policy and plans:** [docs/compliance.md](docs/compliance.md) lists what each automation does, the owner's decisions about it, and the policy questions still open; it does not claim Blizzard approval. [docs/design-notes.md](docs/design-notes.md) has designs, not yet built, for secure group headers (#2), leader handover and role controls (#4), shared gathering nodes (#5) and assist-or-cast spell macros (#8).
+
 ---
 
 ## Credits
