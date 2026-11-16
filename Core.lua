@@ -57,6 +57,7 @@ local DEFAULTS = {
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars, where the client reports them
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
+	teamView            = "main", -- team frame on this account: "main" or "mini" (Mini Heal: big health tiles)
 	teamShowHots        = true,   -- team frame: heal-over-time icons on the health bars
 	teamHotNames        = "",     -- HoT names, comma separated; empty = the built-in list
 	teamRequiredBuffs   = "",     -- buff names every member should have, comma separated; empty = off
@@ -1628,6 +1629,7 @@ end
 -- Names for the actions in Bindings.xml (Esc > Options > Keybindings > AddOns).
 BINDING_HEADER_HAPLOBOX = "HaploBox"
 BINDING_NAME_HAPLOBOX_LEAD = "Make this toon the leader and send the team"
+BINDING_NAME_HAPLOBOX_VIEW = "Team frame: switch Main / Mini Heal view"
 BINDING_NAME_HAPLOBOX_ACCEPT = "Accept the team offered by a new leader"
 BINDING_NAME_HAPLOBOX_TARGET_LEADER = "Make my target the leader"
 BINDING_NAME_HAPLOBOX_ROLE_TANK = "My role: tank"
@@ -1642,12 +1644,13 @@ BINDING_NAME_HAPLOBOX_ROLE_DPS = "My role: dps"
 local CHOICES = {
 	teamFrame = { auto = true, show = true, hide = true },
 	autoShareQuests = { leader = true, all = true, off = true },
+	teamView = { main = true, mini = true },
 }
 HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
 	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
 	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
-	teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
+	teamView = true, teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
 	teamHotNames = true, teamRequiredBuffs = true, teamBuffOverview = true, teamDebuffOverview = true,
 }
 HB.FRAME_KEYS = FRAME_KEYS
@@ -1682,6 +1685,12 @@ function HB.SetOption(key, value)
 	return value
 end
 
+-- Key binding and /hb frame main|mini: this account's view only; nothing is sent.
+function HB.ToggleView()
+	local v = HB.SetOption("teamView", HB.db.teamView == "mini" and "main" or "mini")
+	print_("team frame view: " .. (v == "mini" and "Mini Heal" or "main") .. (HB.SettingsDeferred() and " (after combat)" or ""))
+end
+
 -- true when a team frame change waits for the end of combat
 function HB.SettingsDeferred() return InCombatLockdown() and true or false end
 
@@ -1712,6 +1721,7 @@ local function help()
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
+	print_("  /hb frame main | mini - the full view, or Mini Heal: big health tiles for small windows")
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
 	print_("  /hb frame xp | gold | bags | buffs - show or hide level and XP, gold, free bag slots, buffs")
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
@@ -1783,7 +1793,10 @@ SlashCmdList.HAPLOBOX = function(input)
 		local alias = { on = "show", off = "hide", all = "show", leader = "auto" }
 		a = alias[a] or a
 		local later = HB.SettingsDeferred() and " (after combat)" or ""
-		if a == "auto" or a == "show" or a == "hide" then
+		if a == "main" or a == "mini" then
+			HB.SetOption("teamView", a)
+			print_("team frame view: " .. (a == "mini" and "Mini Heal" or "main") .. later)
+		elseif a == "auto" or a == "show" or a == "hide" then
 			HB.SetOption("teamFrame", a)
 			print_("team frame on this toon: " .. a .. later)
 		elseif a == "scale" and HB.SetOption("partyScale", b) then

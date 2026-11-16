@@ -167,7 +167,7 @@ local function updateRow(r)
 	if nRequired == 0 then
 		r.required:SetText("")
 	elseif not buffs then
-		r.required:SetText("|cff999999buffs ?|r")
+		r.required:SetText(r.requiredShort and "|cff999999?|r" or "|cff999999buffs ?|r")
 	else
 		local have = {}
 		for _, a in ipairs(buffs) do have[a.name:lower()] = true end
@@ -175,9 +175,10 @@ local function updateRow(r)
 		for name in pairs(required) do if not have[name] then missing[#missing + 1] = name end end
 		table.sort(missing)
 		if #missing > 0 and not complete then
-			r.required:SetText("|cff999999buffs ?|r")  -- not seen, but the list was cut short
+			r.required:SetText(r.requiredShort and "|cff999999?|r" or "|cff999999buffs ?|r")  -- not seen, but the list was cut short
 		else
-			r.required:SetText(#missing > 0 and ("|cffff5544no " .. table.concat(missing, ", ") .. "|r") or "")
+			local text = r.requiredShort and ("-" .. #missing) or ("no " .. table.concat(missing, ", "))
+			r.required:SetText(#missing > 0 and ("|cffff5544" .. text .. "|r") or "")
 		end
 	end
 end
@@ -197,11 +198,28 @@ local function create(r)
 	holder:EnableMouse(false)
 	holder:SetFrameLevel(r.health:GetFrameLevel() + 3)
 	r.required = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	r.required:SetPoint("LEFT", holder, "LEFT", 4 + HOT_MAX * (HOT_SIZE + 2), 0)
-	r.required:SetPoint("RIGHT", holder, "RIGHT", -34, 0)
-	r.required:SetJustifyH("LEFT")
 	r.required:SetWordWrap(false)
+	r.requiredHolder = holder
 end
+
+-- Room for the required-buff text: right of the HoT icons, left of the percent.
+-- Narrow bars (Mini Heal at its smallest) only get a short count at the right.
+local HOTS_W, PCT_W, MIN_TEXT = 4 + HOT_MAX * (HOT_SIZE + 2), 34, 50
+local function size(r)
+	local w = r.health.GetWidth and r.health:GetWidth()
+	if type(w) ~= "number" or secret(w) then w = 0 end
+	r.required:ClearAllPoints()
+	r.requiredShort = w - HOTS_W - PCT_W < MIN_TEXT
+	if r.requiredShort then
+		r.required:SetPoint("BOTTOMRIGHT", r.requiredHolder, "BOTTOMRIGHT", -3, 2)
+		r.required:SetJustifyH("RIGHT")
+	else
+		r.required:SetPoint("LEFT", r.requiredHolder, "LEFT", HOTS_W, 0)
+		r.required:SetPoint("RIGHT", r.requiredHolder, "RIGHT", -PCT_W, 0)
+		r.required:SetJustifyH("LEFT")
+	end
+end
+HB.SizeRowAuras = size
 
 -- ---------------------------------------------------------------- overviews
 local DISPEL_COLOR = {
@@ -359,6 +377,7 @@ local function refreshSoon()
 end
 
 table.insert(HB.RowHooks.create, create)
+table.insert(HB.RowHooks.size, size)
 table.insert(HB.RowHooks.clear, hideRow)
 table.insert(HB.RowHooks.refresh, function(r) updateRow(r) refreshSoon() end)
 HB.AddRowEvent("UNIT_AURA", function(r) updateRow(r) refreshSoon() end)

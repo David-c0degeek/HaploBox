@@ -23,6 +23,8 @@ local SECTIONS = {
 	{ id = "frame", title = "Team frame", items = {
 		{ "teamFrame", "cycle", "Show the team frame", choices = FRAME_MODES, text = FRAME_MODE_TEXT,
 			help = "leader only: shown on the team leader. Also /hb frame auto|show|hide." },
+		{ "teamView", "cycle", "View", choices = { "main", "mini" }, text = { main = "main", mini = "Mini Heal" },
+			help = "Mini Heal: one big health tile per member for small windows. Click to target, [@mouseover] heals work. Also a key binding and /hb frame main|mini." },
 		{ "teamLocked", "toggle", "Lock it in place (unlock to move and resize)" },
 		{ "partyScale", "scale", "Scale" },
 		{ "partyFrameSolo", "toggle", "Also show it when not in a group" },
@@ -87,7 +89,7 @@ HB.SETTINGS = SECTIONS
 
 -- the quick settings popup: display settings of the team frame on this account
 local QUICK = {
-	"teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags",
+	"teamView", "teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags",
 	"teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule", "teamShowHots",
 	"teamBuffOverview", "teamDebuffOverview",
 }

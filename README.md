@@ -58,6 +58,8 @@ The health bars can show more, all read from the game itself and each with its o
 
 When the game restricts aura data (retail does this in combat), or a member is offline, these show `unknown` (or `offline`) instead of old or guessed values. HaploBox reads up to 40 auras per member; if there are more, a buff it did not reach shows as `buffs ?`, not as missing, and the window marks the list with `?`. They are additions: Blizzard's own frames are not changed.
 
+**Mini Heal view:** for small follower windows, switch the frame to Mini Heal (quick settings, **Team frame > View**, `/hb frame mini`, or a key binding you set under Keybindings > AddOns > HaploBox; no key is assigned for you). Each member becomes one big health tile with the name and percent inside; incoming heals, casts and HoTs still show. They are the same rows, so clicking and `[@mouseover]` work the same. The choice and its size are kept for this WoW account only and are never sent to the team. `/hb frame main` switches back. Switching in combat happens when combat ends.
+
 WoW does not let addons rebind the rows in combat. If someone joins or leaves the group in combat, a row that now points at a different character turns dim and shows `?` until combat ends. Do not click it until then.
 
 ### Status box

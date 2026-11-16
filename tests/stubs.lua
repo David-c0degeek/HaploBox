@@ -178,6 +178,8 @@ local frameMethods = {
 	IsProtected = function() return false end,
 	SetChecked = function(self, v) self.checked = v and true or false end,
 	SetValue = function(self, v) self.value = v end,
+	SetSize = function(self, w, h) self.width, self.height = w, h end,
+	GetWidth = function(self) return self.width end,
 	EnableMouse = function(self, v) self.mouse = v and true or false end,
 	GetValue = function(self) return self.value end,
 	SetMinMaxValues = function(self, a, b) self.min, self.max = a, b end,

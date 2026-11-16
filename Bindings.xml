@@ -10,6 +10,9 @@
 	<Binding name="HAPLOBOX_TARGET_LEADER" category="ADDONS">
 		HaploBox.SetLeaderName(HaploBox.UnitIdent("target"))
 	</Binding>
+	<Binding name="HAPLOBOX_VIEW" category="ADDONS">
+		HaploBox.ToggleView()
+	</Binding>
 	<Binding name="HAPLOBOX_ROLE_TANK" category="ADDONS">
 		HaploBox.SetMyRole("tank")
 	</Binding>

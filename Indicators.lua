@@ -121,7 +121,8 @@ end
 -- starts over instead of comparing two characters' mana.
 local function sampleMana(r, fromEvent)
 	local u = r.unit
-	if not (HB.db.teamManaRule and HB.ManaRuleSupported() and u and UnitExists(u)) then
+	-- its bar sits on the mana bar, which Mini Heal hides
+	if not (HB.db.teamManaRule and HB.ManaRuleSupported() and HB.AppliedView() ~= "mini" and u and UnitExists(u)) then
 		r.manaKey, r.manaLast = nil, nil
 		return hideRule(r)
 	end

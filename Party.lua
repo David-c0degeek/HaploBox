@@ -135,13 +135,35 @@ end
 
 -- ---------------------------------------------------------------- sizes
 local MIN_W, MAX_W, MIN_H, MAX_H = 150, 500, 28, 70
-local function rowW() return math.min(MAX_W, math.max(MIN_W, HB.db.teamW or 250)) end
-local function rowH() return math.min(MAX_H, math.max(MIN_H, HB.db.teamRowH or 38)) end
+local MINI_MIN_W = 90
+-- Main or Mini Heal view. "applied" is the layout the rows have now; HB.db.teamView
+-- is the one asked for. They differ only while a change waits for the end of combat,
+-- so updates in combat keep drawing the layout the rows really have.
+local appliedView = "main"
+local function mini() return appliedView == "mini" end
+function HB.AppliedView() return appliedView end
+local function dim(v, lo, hi, default)
+	if type(v) ~= "number" or v ~= v or v == math.huge or v == -math.huge then v = default end
+	return math.min(hi, math.max(lo, v))
+end
+local function sizeKeys() if mini() then return "teamMiniW", "teamMiniH" end return "teamW", "teamRowH" end
+local function rowW()
+	if mini() then return dim(HB.db.teamMiniW, MINI_MIN_W, MAX_W, 140) end
+	return dim(HB.db.teamW, MIN_W, MAX_W, 250)
+end
+local function rowH()
+	if mini() then return dim(HB.db.teamMiniH, MIN_H, MAX_H, 40) end
+	return dim(HB.db.teamRowH, MIN_H, MAX_H, 38)
+end
+local function boxW() return mini() and 0 or BOX_W end
 -- the info strip below the bars: XP bar, then a line with free bag slots and gold
-local function showTotals() return HB.db.teamShowGold or HB.db.teamShowBags end
+local function showTotals() return not mini() and (HB.db.teamShowGold or HB.db.teamShowBags) end
 local function showLine() return showTotals() or HB.db.teamShowBuffs end
 local function lineH() return HB.db.teamShowBuffs and (BUFF_SIZE + 3) or 15 end
-local function stripH() return (HB.db.teamShowXP and (XP_H + 3) or 0) + (showLine() and lineH() or 0) end
+local function stripH()
+	if mini() then return 0 end
+	return (HB.db.teamShowXP and (XP_H + 3) or 0) + (showLine() and lineH() or 0)
+end
 local function fullH() return rowH() + stripH() end
 
 -- ---------------------------------------------------------------- money
@@ -225,24 +247,44 @@ end
 -- Sizes and anchors that depend on the row size. Out of combat only (rows are secure).
 local function sizeRow(r)
 	local W, H, FH = rowW(), rowH(), fullH()
-	r:SetSize(W + GAP + BOX_W, FH)
+	local small = mini()
+	r:SetSize(W + (small and 0 or GAP) + boxW(), FH)
 	r.bg:SetSize(W, FH)
 	r.focusMaxW = math.floor(W * 0.45)
-	r.nameText:SetWidth(math.floor(W * 0.45))
+	r.health:ClearAllPoints()
+	r.nameText:ClearAllPoints()
+	if small then
+		-- Mini Heal: one big health bar per row, name and percent inside it
+		r.health:SetPoint("TOPLEFT", 3, -3)
+		r.health:SetSize(W - 6, H - 6)
+		r.nameText:SetParent(r.health)
+		r.nameText:SetPoint("TOPLEFT", r.health, "TOPLEFT", 4, -2)  -- HoT icons sit at the bottom
+		r.nameText:SetWidth(math.floor(W * 0.65))
+	else
+		r.health:SetPoint("TOPLEFT", 6, -19)
+		r.nameText:SetParent(r)
+		r.nameText:SetPoint("TOPLEFT", 6, -4)
+		r.nameText:SetWidth(math.floor(W * 0.45))
+	end
+	r.nameText:SetDrawLayer("OVERLAY")
+	r.power:SetShown(not small)
+	r.focusText:SetShown(not small)
+	r.focusIcon:SetShown(not small)
+	r.box:SetShown(not small)
 	local barH = math.max(6, H - 25)
-	r.health:SetSize(W - 12, barH)
+	if not small then r.health:SetSize(W - 12, barH) end
 	r.power:SetSize(W - 12, math.max(3, math.floor(barH / 3)))
 	r.rested:SetSize(W - 12, XP_H)
-	r.rested:SetShown(HB.db.teamShowXP and true or false)
+	r.rested:SetShown(not small and HB.db.teamShowXP and true or false)
 	local mid = lineH() / 2
 	r.bagIcon:ClearAllPoints()
 	r.bagIcon:SetPoint("LEFT", r, "BOTTOMLEFT", 6, mid)
 	r.moneyText:ClearAllPoints()
 	r.moneyText:SetPoint("RIGHT", r, "BOTTOMLEFT", W - 6, mid)
 	r.buffMax = math.max(1, math.floor((W - 120) / BUFF_STEP))
-	r.moneyText:SetShown(HB.db.teamShowGold and true or false)
-	r.bagIcon:SetShown(HB.db.teamShowBags and true or false)
-	r.bagText:SetShown(HB.db.teamShowBags and true or false)
+	r.moneyText:SetShown(not small and HB.db.teamShowGold and true or false)
+	r.bagIcon:SetShown(not small and HB.db.teamShowBags and true or false)
+	r.bagText:SetShown(not small and HB.db.teamShowBags and true or false)
 	r.box:ClearAllPoints()
 	r.box:SetPoint("TOPLEFT", r, "TOPLEFT", W + GAP, 0)
 	r.box:SetSize(BOX_W, FH)
@@ -595,7 +637,7 @@ end
 
 local function updateBuffs(r)
 	if r.stale then return end
-	local show = HB.db.teamShowBuffs and r.unit and UnitExists(r.unit)
+	local show = HB.db.teamShowBuffs and not mini() and r.unit and UnitExists(r.unit)
 	local list = {}
 	if show then
 		local ok, res = pcall(readBuffs, r.unit)
@@ -697,7 +739,7 @@ end
 
 local function sizeContainer()
 	local n = math.max(1, shownRows())
-	local W, FH = rowW() + GAP + BOX_W, fullH()
+	local W, FH = rowW() + (mini() and 0 or GAP) + boxW(), fullH()
 	local rowsH = n * (FH + GAP) - GAP
 	local ft = container.footer
 	ft:SetShown(showTotals() and true or false)
@@ -750,6 +792,10 @@ local function updateLockUI()
 	container.grip:SetShown(unlocked)
 	container.gearTab:SetShown(not unlocked)
 	container.sendButton:SetText(HB.IAmLeader() and "Send team" or "Lead team")
+	-- Mini Heal is too narrow for Send team and the hint: gear and Lock only (66 px).
+	-- The team action stays in the full settings and /hb team.
+	container.sendButton:SetShown(not mini())
+	container.dragHint:SetShown(not mini())
 end
 
 -- Called by HB.SetOption("teamLocked"). In combat the change waits for the layout
@@ -817,6 +863,7 @@ local function createChrome()
 	t:SetJustifyH("LEFT")
 	t:SetWordWrap(false)
 	t:SetText("drag to move")
+	container.dragHint = t
 	send:SetScript("OnClick", function() HB.MakeMeLeader() end)
 	send:SetScript("OnEnter", function(self)
 		if not GameTooltip then return end
@@ -855,8 +902,9 @@ local function createChrome()
 			local st = self.start
 			local x, y = GetCursorPosition()
 			x, y = x / st.s, y / st.s
-			HB.db.teamW = math.floor(math.min(MAX_W, math.max(MIN_W, st.w + (x - st.x))) + 0.5)
-			HB.db.teamRowH = math.floor(math.min(MAX_H, math.max(MIN_H, st.h + (st.y - y) / st.n)) + 0.5)
+			local wKey, hKey = sizeKeys()
+			HB.db[wKey] = math.floor(math.min(MAX_W, math.max(mini() and MINI_MIN_W or MIN_W, st.w + (x - st.x))) + 0.5)
+			HB.db[hKey] = math.floor(math.min(MAX_H, math.max(MIN_H, st.h + (st.y - y) / st.n)) + 0.5)
 			sizeContainer()
 		end)
 	end)
@@ -885,6 +933,7 @@ function HB.LayoutPartyFrame()
 		return
 	end
 	pendingLayout = false
+	appliedView = HB.db.teamView == "mini" and "mini" or "main"
 	container:SetScale(HB.db.partyScale or 1)
 	if not wanted() then container:Hide() return end
 	local names = HB.TeamOrder()
@@ -936,7 +985,7 @@ end
 
 function HB.ResetPartyPosition()
 	if InCombatLockdown() then HB.print("not in combat") return end
-	HB.db.partyPos, HB.db.teamW, HB.db.teamRowH = nil, nil, nil
+	HB.db.partyPos, HB.db.teamW, HB.db.teamRowH, HB.db.teamMiniW, HB.db.teamMiniH = nil, nil, nil, nil, nil
 	applyPosition()
 	HB.LayoutPartyFrame()
 end
