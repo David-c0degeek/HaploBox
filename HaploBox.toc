@@ -12,4 +12,5 @@ Party.lua
 Indicators.lua
 Auras.lua
 Share.lua
+Quests.lua
 Options.lua

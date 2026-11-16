@@ -66,6 +66,8 @@ local SECTIONS = {
 	{ id = "quests", title = "Quests & travel", items = {
 		{ "autoAcceptShared", "toggle", "Accept quests shared by a team member" },
 		{ "autoShareQuests", "cycle", "Share quests I accept", choices = SHARE_MODES, text = SHARE_MODE_TEXT },
+		{ "askAbandonQuests", "toggle", "When I abandon a quest, ask to abandon it on the followers", who = "leader" },
+		{ "followAbandonQuests", "toggle", "Abandon a quest when the leader asks", who = "followers" },
 		{ "shareErrorAlert", "toggle", "Sound and message when a quest share fails" },
 		{ "followFlights", "toggle", "Fly to the leader's flight destination when my flight map opens", who = "followers" },
 		{ "hideQuestTracker", "toggle", "Hide Blizzard's quest tracker" },

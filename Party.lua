@@ -296,6 +296,10 @@ local function createRow(i)
 	local r = CreateFrame("Button", "HaploBoxPartyRow" .. i, container, "SecureUnitButtonTemplate")
 	r:RegisterForClicks("AnyUp")
 	r:SetAttribute("type1", "target")
+	-- Clique and other click-casting addons bind the frames listed here (also when
+	-- they load after HaploBox: they read the table at load)
+	ClickCastFrames = ClickCastFrames or {}
+	ClickCastFrames[r] = true
 	r:RegisterForDrag("LeftButton")
 	r:SetScript("OnDragStart", startMove)
 	r:SetScript("OnDragStop", function() HB.SavePartyPosition() end)

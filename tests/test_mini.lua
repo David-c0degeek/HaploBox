@@ -97,6 +97,11 @@ test("Mini Heal at its smallest keeps the bar buttons and buff text inside the f
 	eq(r.requiredShort, false, "full text on the main bar")
 end)
 
+test("rows are registered for Clique in both views", function()
+	setup({ teamView = "mini" })
+	eq(ClickCastFrames[HaploBoxPartyRow1], true, "row registered")
+end)
+
 test("the view is local: switching sends nothing", function()
 	setup()
 	W.sent = {}

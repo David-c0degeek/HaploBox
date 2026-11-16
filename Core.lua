@@ -38,6 +38,8 @@ local DEFAULTS = {
 	autoAcceptInvite    = true,   -- followers accept invites from the leader
 	autoAcceptShared    = true,   -- accept quests that a team member shares
 	autoShareQuests     = "leader", -- "leader", "all" or "off"
+	askAbandonQuests    = true,     -- leader: abandoning a quest asks whether the followers abandon it too
+	followAbandonQuests = true,     -- followers: abandon a quest when the leader asks
 	shareErrorAlert     = true,
 	relayErrors         = true,   -- followers send cast errors to the leader
 	showRelayedErrors   = true,   -- leader prints them in chat
@@ -280,6 +282,7 @@ local function send(msg, key)
 	if not IsInGroup() then return end
 	enqueue(msg, nil, key)
 end
+HB.SendGroup = send  -- for Quests.lua
 
 -- To one toon only, as an addon whisper. Never falls back to the group.
 local function whisper(target, msg, onFail, onOk, check)
@@ -450,15 +453,22 @@ end
 -- a method chosen by hand stays until the group or team changes. Someone outside
 -- the team: free for all becomes group loot, unless the leader picked the method
 -- by hand. Unknown names: look again shortly.
-local lootToken, lootDoneKey, lootRetries = nil, nil, 0
+local lootToken, lootDoneKey, lootRetries, lootKeptKey = nil, nil, 0, nil
 local function checkLoot()
-	if not IsInGroup() then lootDoneKey = nil return end
-	if not (HB.db and HB.db.autoFFA and HB.IAmLeader()) then return end
-	if UnitIsGroupLeader and not UnitIsGroupLeader("player") then return end
+	if not IsInGroup() then lootDoneKey, lootKeptKey = nil, nil return end
+	if not (HB.db and HB.db.autoFFA and HB.IAmLeader()) then
+		debug("loot check skipped: " .. (HB.db and HB.db.autoFFA and "not the HaploBox leader" or "Free-for-all loot is off"))
+		return
+	end
+	if UnitIsGroupLeader and not UnitIsGroupLeader("player") then
+		debug("loot check skipped: not the group leader in the game")
+		return
+	end
 	local status, key, outsiders = HB.GroupStatus()
 	if status == "uncertain" then
 		lootRetries = lootRetries + 1
-		if lootRetries <= 15 then HB.ScheduleLootCheck(2) end
+		if lootRetries <= 15 then HB.ScheduleLootCheck(2)
+		else debug("loot check gave up: group names still unknown (" .. GetNumGroupMembers() .. " members)") end
 		return
 	end
 	lootRetries = 0
@@ -472,14 +482,19 @@ local function checkLoot()
 		lootByHand = true
 	end
 	lootSeen = m
+	debug("loot check: " .. status .. ", method " .. tostring(m) .. (lootByHand and ", set by hand" or ""))
 	if status == "mixed" then
 		lootDoneKey = nil
 		if m == "freeforall" and not lootByHand then
 			print_(outsiderText(outsiders) .. " is not in the team: switching free for all to group loot")
 			setLootMethod("group", true)
+		elseif m == "freeforall" and lootKeptKey ~= key then
+			lootKeptKey = key
+			print_(outsiderText(outsiders) .. " is not in the team; free for all stays because you set it yourself")
 		end
 		return
 	end
+	lootKeptKey = nil
 	local teamKey = key .. "|" .. tostring(HB.Norm(HB.Leader()))
 	for _, n in ipairs(HaploBoxTeam.order or {}) do teamKey = teamKey .. "," .. tostring(HB.Norm(n)) end
 	if lootDoneKey == teamKey then return end
@@ -1440,16 +1455,18 @@ end
 --   K     toon -> leader       K|<to>|ok|fail|hidden|off               team
 --   U     leader -> toon       U|<id>|<i>|<n>|<piece> (UI settings)    leader, whisper only
 --   A     toon -> leader       A|<id>|<result>                         team, whisper only
+--   Q     leader -> group      Q|<questID>|<title> (abandon it too)    leader
+--   B     toon -> leader       B|done|missing|off|failed|<title>       team, whisper only
 -- Group kinds count only on the group channel. W, Y and K go out as addon whispers
 -- (0.9.0 and later); they are also taken from the group channel, where older
 -- versions send them. Anything else (older HELLO messages included) is dropped.
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
-	U = "leader", A = "team",
+	U = "leader", A = "team", Q = "leader", B = "team",
 }
-local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true }
-local WHISPER_ONLY = { U = true, A = true }  -- shared UI settings: never on a group channel
+local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true }
+local WHISPER_ONLY = { U = true, A = true, B = true }  -- shared UI settings: never on a group channel
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
 local function accepted(kind, channel, sender)
@@ -1477,6 +1494,8 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 		return
 	end
 	if kind == "Y" then onReplyRequest(sender, msg) return end
+	if kind == "Q" then if HB.OnQuestAbandon then HB.OnQuestAbandon(sender, msg) end return end
+	if kind == "B" then if HB.OnAbandonResult then HB.OnAbandonResult(sender, msg) end return end
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
 	if kind == "P" then onLeaderFlight(sender, msg:sub(3)) return end
 	local _, code, arg = strsplit("|", msg)

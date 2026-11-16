@@ -71,6 +71,16 @@ test("HoT icons show group HoTs from the built-in list, at most four", function(
 	eq(r.hots[1].shown, false, "off")
 end)
 
+test("HoT icons sit inside the health bar, with the time on the icon", function()
+	local r = setup()
+	local barH = r.health.height
+	eq(r.hots[1].height <= barH - 2, true, "fits the main bar (" .. tostring(r.hots[1].height) .. " in " .. tostring(barH) .. ")")
+	eq(r.hots[1].point[1], "LEFT", "centred on the bar")
+	eq(r.hots[1].time.point[1], "CENTER", "time inside the icon")
+	HB.SetOption("teamView", "mini")
+	eq(r.hots[1].point[1], "BOTTOMLEFT", "Mini Heal: along the bottom of the tile")
+end)
+
 test("a HoT that runs out disappears on the next tick", function()
 	local r = setup()
 	W.auras = { party1 = { HELPFUL = { aura("Renew", 2, "player") } } }

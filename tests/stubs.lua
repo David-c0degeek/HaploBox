@@ -32,7 +32,38 @@ function CopyTable(t)
 	for k, v in pairs(t) do o[k] = type(v) == "table" and CopyTable(v) or v end
 	return o
 end
-function hooksecurefunc() end
+-- runs fn after the original, like the game's hooksecurefunc
+function hooksecurefunc(a, b, c)
+	local t, name, fn = _G, a, b
+	if type(a) == "table" then t, name, fn = a, b, c end
+	local orig = t[name]
+	if type(orig) ~= "function" then return end
+	t[name] = function(...)
+		local r = { orig(...) }
+		fn(...)
+		return unpack(r)
+	end
+end
+
+-- quest log (Classic style): W.quests = { { title, id, header } }
+function GetNumQuestLogEntries() return #(W.quests or {}) end
+function GetQuestLogTitle(i)
+	local q = (W.quests or {})[i]
+	if not q then return nil end
+	return q.title, 10, 0, q.header or false, false, false, 0, q.id
+end
+function SelectQuestLogEntry(i) W.questSel = i end
+function GetQuestLogSelection() return W.questSel or 0 end
+function SetAbandonQuest() W.abandonSel = W.questSel end
+function GetAbandonQuestName()
+	local q = (W.quests or {})[W.abandonSel or 0]
+	return q and q.title or ""
+end
+function AbandonQuest()
+	local q = table.remove(W.quests or {}, W.abandonSel or 0)
+	W.abandoned = W.abandoned or {}
+	if q then W.abandoned[#W.abandoned + 1] = q.title end
+end
 function GetAddOnMetadata(_, field) return field == "Version" and "test" or nil end
 
 -- units

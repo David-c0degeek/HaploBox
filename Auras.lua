@@ -128,7 +128,7 @@ local function iconFrame(parent, size)
 	b.tex:SetAllPoints()
 	b.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 	b.time = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	b.time:SetPoint("BOTTOM", 0, -1)
+	b.time:SetPoint("BOTTOM", 0, -1)  -- HoT icons move it inside the icon (see size)
 	b.time:SetFont(b.time:GetFont(), 8, "OUTLINE")
 	return b
 end
@@ -188,7 +188,8 @@ local function create(r)
 	r.hots = {}
 	for i = 1, HOT_MAX do
 		local b = iconFrame(r, HOT_SIZE)
-		b:SetPoint("BOTTOMLEFT", r.health, "BOTTOMLEFT", 2 + (i - 1) * (HOT_SIZE + 2), 2)
+		b.time:ClearAllPoints()
+		b.time:SetPoint("CENTER", 0, 0)  -- inside the icon, so it never covers the mana bar
 		b:SetFrameLevel(r.health:GetFrameLevel() + 3)
 		b:Hide()
 		r.hots[i] = b
@@ -208,6 +209,21 @@ local HOTS_W, PCT_W, MIN_TEXT = 4 + HOT_MAX * (HOT_SIZE + 2), 34, 50
 local function size(r)
 	local w = r.health.GetWidth and r.health:GetWidth()
 	if type(w) ~= "number" or secret(w) then w = 0 end
+	local h = r.health.GetHeight and r.health:GetHeight()
+	if type(h) ~= "number" or secret(h) then h = HOT_SIZE + 2 end
+	-- HoT icons fit inside the health bar: centred on the thin main bar, along the
+	-- bottom of the tall Mini Heal tile (the name sits at its top)
+	local mini = HB.AppliedView and HB.AppliedView() == "mini"
+	local s = math.max(8, math.min(mini and 16 or HOT_SIZE, math.floor(h - 2)))
+	for i, b in ipairs(r.hots) do
+		b:SetSize(s, s)
+		b:ClearAllPoints()
+		if mini then
+			b:SetPoint("BOTTOMLEFT", r.health, "BOTTOMLEFT", 2 + (i - 1) * (s + 2), 2)
+		else
+			b:SetPoint("LEFT", r.health, "LEFT", 2 + (i - 1) * (s + 2), 0)
+		end
+	end
 	r.required:ClearAllPoints()
 	r.requiredShort = w - HOTS_W - PCT_W < MIN_TEXT
 	if r.requiredShort then

@@ -45,6 +45,9 @@ Classic Era, retail). That is a load declaration, not verification.
   default. Each still needs a click by the leader, and each follower acts only
   on a message from its own stored leader. Blizzard has not ruled on these
   specifically; the owner's acceptance is the basis, not an official statement.
+- **Abandoning a quest on the team**: requested by the owner on 2026-11-16, in the
+  same category. It needs the leader's own abandon and a Yes in the popup; No does
+  nothing on the followers.
 
 ## Feature inventory
 
@@ -69,6 +72,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | HoTs, required buffs, aura windows | Unit aura events, 1 s timer | Display only | None | Game data about group members | Display only; restricted data shows unknown |
 | Incoming heals, cast bars, mana timer | Unit events | Display on the team frame only | None | Game data about group members, as Blizzard's own frames show it | Display only; secret values never computed with |
 | Share UI layout | Leader confirms a popup | Display settings and positions on followers | Leader's click | Whisper to team members only; followers accept only from their leader, can turn it off and undo | Display only; no gameplay or team settings |
+| Abandon quest on team | Leader abandons a quest, then confirms a popup | Followers abandon the same quest | Leader's Yes | Followers act only on their stored leader's message, only for a quest they have; follower setting turns it off | Owner-requested 2026-11-16 |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 
 Not built and not approved by this review: leader handover by window switch
