@@ -499,7 +499,7 @@ local function updateStatus(r)
 	if not target then setBox(r, C.ok, "link", "FOLLOW") return end   -- old version: no target
 	local icon, label
 	if HB.IsLeaderName(target) then icon, label = "crown", "> LEAD"
-	elseif HB.RoleOf(target) == "healer" then icon, label = "cross", "> HEAL"
+	elseif HB.TeamHealer and HB.Norm(HB.TeamHealer() or "") == HB.Norm(target) then icon, label = "cross", "> HEAL"
 	else icon, label = "link", shortLabel(target) end
 	if chainMoving(target) then
 		setBox(r, HB.IsLeaderName(target) and C.ok or C.chain, icon, label)

@@ -10,6 +10,15 @@
 	<Binding name="HAPLOBOX_TARGET_LEADER" category="ADDONS">
 		HaploBox.SetLeaderName(HaploBox.UnitIdent("target"))
 	</Binding>
+	<Binding name="HAPLOBOX_TAKE_LEAD" category="ADDONS">
+		HaploBox.TakeLead()
+	</Binding>
+	<Binding name="CLICK HaploBoxFollowLeader:LeftButton" category="ADDONS">
+	</Binding>
+	<Binding name="CLICK HaploBoxAssistLeader:LeftButton" category="ADDONS">
+	</Binding>
+	<Binding name="CLICK HaploBoxFollowHealer:LeftButton" category="ADDONS">
+	</Binding>
 	<Binding name="HAPLOBOX_VIEW" category="ADDONS">
 		HaploBox.ToggleView()
 	</Binding>

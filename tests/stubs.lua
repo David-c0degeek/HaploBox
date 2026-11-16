@@ -132,7 +132,13 @@ function IsInGroup(category)
 end
 function IsInRaid() return W.raid end
 function GetNumGroupMembers() local n = groupSize() return n > 0 and (W.raid and n or n + 1) or 0 end
-function UnitIsGroupLeader() return not W.notGroupLeader end
+function UnitIsGroupLeader(u)
+	if W.partyLeader then return unitName(u or "player") == W.partyLeader end
+	if u == nil or u == "player" then return not W.notGroupLeader end
+	return false
+end
+-- W.groupRoles = { Elya = "HEALER" }: Blizzard group roles by name
+function UnitGroupRolesAssigned(u) return (W.groupRoles or {})[unitName(u) or ""] or "NONE" end
 function InCombatLockdown() return W.combat end
 LE_PARTY_CATEGORY_INSTANCE = 2
 

@@ -13,4 +13,5 @@ Indicators.lua
 Auras.lua
 Share.lua
 Quests.lua
+Lead.lua
 Options.lua

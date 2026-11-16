@@ -129,10 +129,16 @@ explicit key press or click on the toon that becomes the leader.
 
 ### Open questions
 
-- **verify:** whether F2/F3 key-down can stay with the window tool while the
-  same key also works in game. This is a WoWWindowKit question. Without that,
-  the documented flow is: switch with the window tool, then press the handover
-  binding.
+- **WoWWindowKit finding (read 2026-11-17, `c381c9e`):** `KeyboardHook.cs`
+  `HandleKey` swallows a swap key's key-down and its key-up when a managed WoW
+  window is in front (`return 1` from the low-level hook), so the game never
+  sees F2/F3. Letting the key through would deliver it to the window being left,
+  not the new one, and sending it to the new window would be key injection.
+  So the flow stays two presses: switch with WoWWindowKit, then press the
+  HaploBox take-over binding. Any WoWWindowKit change is a separate piece of
+  work in that repository.
+- **Built (offline, 2026-11-17):** `Lead.lua` has the handover and the three
+  role controls as described above.
 - Raids and teams of more than 5 wait for #2.
 
 ## #5: Gathering nodes found by followers, shown on the leader's minimap

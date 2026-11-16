@@ -558,10 +558,12 @@ local function setRole(name, role)
 end
 
 local function refreshTeam()
+	if HB.UpdateRoleControls then C_Timer.After(0.2, HB.UpdateRoleControls) end
 	if HB.ScheduleLootCheck then HB.ScheduleLootCheck(1) end
 	if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
 end
+HB.RefreshTeam = refreshTeam
 
 -- Every leader change goes through here. Private messages still queued for the old
 -- leader, and the leader's reply target, are dropped.
@@ -572,12 +574,14 @@ local function setLeader(name)
 	end
 	HaploBoxTeam.leader = name
 end
+HB.SetLeaderRaw = setLeader  -- Lead.lua: a handover keeps the team and its roles
 
 -- list: { name = , role = } with role nil when unknown. An unknown role keeps the
 -- role this toon has stored for that name.
 local function applyTeam(leader, list)
 	local old = HaploBoxTeam.roles or {}
 	setLeader(leader)
+	if HB.BumpLeaderEpoch then HB.BumpLeaderEpoch(leader) end
 	HaploBoxTeam.order = {}
 	HaploBoxTeam.roles = {}
 	for _, m in ipairs(list) do
@@ -751,6 +755,7 @@ function HB.SetLeaderName(name)
 	name = str(name)
 	if not name then print_("no target and no name given") return end
 	setLeader(name)
+	if HB.BumpLeaderEpoch then HB.BumpLeaderEpoch(name) end
 	refreshTeam()
 	print_("leader set to |cffffff00" .. name .. "|r")
 end
@@ -1457,6 +1462,7 @@ end
 --   U     leader -> toon       U|<id>|<i>|<n>|<piece> (UI settings)    leader, whisper only
 --   A     toon -> leader       A|<id>|<result>                         team, whisper only
 --   Q     leader -> group      Q|<questID>|<title> (abandon it too)    leader
+--   H     toon -> group        H|<epoch>|<rosterHash> (takes the lead) team, in my group, same team
 --   B     toon -> leader       B|done|missing|off|failed|<title>       team, whisper only
 -- Group kinds count only on the group channel. W, Y and K go out as addon whispers
 -- (0.9.0 and later); they are also taken from the group channel, where older
@@ -1464,7 +1470,7 @@ end
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
-	U = "leader", A = "team", Q = "leader", B = "team",
+	U = "leader", A = "team", Q = "leader", B = "team", H = "team",
 }
 local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true }
 local WHISPER_ONLY = { U = true, A = true, B = true }  -- shared UI settings: never on a group channel
@@ -1495,6 +1501,7 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 		return
 	end
 	if kind == "Y" then onReplyRequest(sender, msg) return end
+	if kind == "H" then if HB.OnHandover then HB.OnHandover(sender, msg) end return end
 	if kind == "Q" then if HB.OnQuestAbandon then HB.OnQuestAbandon(sender, msg) end return end
 	if kind == "B" then if HB.OnAbandonResult then HB.OnAbandonResult(sender, msg) end return end
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
@@ -1663,6 +1670,10 @@ end
 -- Names for the actions in Bindings.xml (Esc > Options > Keybindings > AddOns).
 BINDING_HEADER_HAPLOBOX = "HaploBox"
 BINDING_NAME_HAPLOBOX_LEAD = "Make this toon the leader and send the team"
+BINDING_NAME_HAPLOBOX_TAKE_LEAD = "Take over as leader (keep the team)"
+_G["BINDING_NAME_CLICK HaploBoxFollowLeader:LeftButton"] = "Follow the leader"
+_G["BINDING_NAME_CLICK HaploBoxAssistLeader:LeftButton"] = "Assist the leader"
+_G["BINDING_NAME_CLICK HaploBoxFollowHealer:LeftButton"] = "Follow the healer (the healer follows the leader)"
 BINDING_NAME_HAPLOBOX_VIEW = "Team frame: switch Main / Mini Heal view"
 BINDING_NAME_HAPLOBOX_ACCEPT = "Accept the team offered by a new leader"
 BINDING_NAME_HAPLOBOX_TARGET_LEADER = "Make my target the leader"
@@ -1746,6 +1757,8 @@ local function help()
 	print_("  /hb status - leader, role and settings")
 	print_("  /hb leader [name] - set the leader (no name: your target)")
 	print_("  /hb accept - accept the team offered by a new leader (or click Accept in the popup)")
+	print_("  /hb lead - take over as leader; the team keeps its order and roles")
+	print_("  /hb controls - what the Follow leader, Assist leader and Follow healer keys do now")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
 	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")
@@ -1775,6 +1788,10 @@ SlashCmdList.HAPLOBOX = function(input)
 		HB.SetLeaderName(rest ~= "" and rest or HB.UnitIdent("target"))
 	elseif cmd == "accept" then
 		HB.AcceptTeam()
+	elseif cmd == "lead" then
+		HB.TakeLead()
+	elseif cmd == "controls" then
+		HB.PrintRoleControls()
 	elseif cmd == "role" then
 		HB.SetMyRole(rest:lower())
 	elseif cmd == "team" then

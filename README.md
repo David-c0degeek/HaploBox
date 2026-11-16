@@ -260,7 +260,11 @@ To check changes outside the game, run `python tests/run.py` (needs `pip install
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.
 - **Settings:** stored per account in `HaploBoxDB`. The team (leader, roles, order) is stored in `HaploBoxTeam`.
 
-**Policy and plans:** [docs/compliance.md](docs/compliance.md) lists what each automation does, the owner's decisions about it, and the policy questions still open; it does not claim Blizzard approval. [docs/design-notes.md](docs/design-notes.md) has designs, not yet built, for secure group headers (#2), leader handover and role controls (#4), shared gathering nodes (#5) and assist-or-cast spell macros (#8).
+**Taking over as leader:** on the toon that should lead, press **Take over as leader** (a key binding you set) or type `/hb lead`. The team keeps its order and roles; every toon with the same team switches to the new leader. With WoWWindowKit this is two presses: switch windows, then the take-over key (WoWWindowKit keeps its swap keys from the game, and HaploBox does not send keys). Nothing changes by itself when a leader dies or disconnects. The HaploBox leader can differ from the party leader, whose row has a small crown.
+
+**Follow and assist keys:** bind **Follow the leader**, **Assist the leader** and **Follow the healer** under Keybindings > AddOns > HaploBox (no keys are assigned). They use the leader's name, not a party slot. Follow the healer follows the one team member with the healer role; with none or several it does nothing, and the healer itself follows the leader. All three do nothing solo, in a raid, with someone outside the team in the group, and on the leader. If the group changes in combat, they update when combat ends and a line under the team frame says so. `/hb controls` shows what each key does now. Not yet checked in the game.
+
+**Policy and plans:** [docs/compliance.md](docs/compliance.md) lists what each automation does, the owner's decisions about it, and the policy questions still open; it does not claim Blizzard approval. [docs/design-notes.md](docs/design-notes.md) has the designs for secure group headers (#2) and leader handover and role controls (#4), both now built but not yet checked in the game, and for shared gathering nodes (#5) and assist-or-cast spell macros (#8).
 
 ---
 
