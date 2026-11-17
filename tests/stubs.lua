@@ -113,7 +113,11 @@ C_UnitAuras = {
 	end,
 }
 local SPELLS = { [139] = "Renew", [774] = "Rejuvenation", [8936] = "Regrowth", [2366] = "Herb Gathering",
-	[2575] = "Mining", [133] = "Fireball" }
+	[2575] = "Mining", [133] = "Fireball", [2054] = "Heal", [6064] = "Heal", [2050] = "Lesser Heal",
+	[2061] = "Flash Heal", [596] = "Prayer of Healing" }
+-- combat log: W.clog holds the current event's values
+function UnitGUID(u) local n = unitName(u) return n and ("Player-" .. n) or nil end
+function CombatLogGetCurrentEventInfo() return unpack(W.clog or {}) end
 C_Spell = { GetSpellName = function(id) return SPELLS[id] end }
 WOW_PROJECT_CLASSIC, WOW_PROJECT_MAINLINE = 2, 1
 WOW_PROJECT_ID = 2

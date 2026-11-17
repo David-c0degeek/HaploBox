@@ -35,11 +35,18 @@ end
 
 local function updatePrediction(r)
 	local u = r.unit
-	if not (HB.db.teamHealPrediction and u and UnitGetIncomingHeals and UnitExists(u)) then return setPrediction(r) end
+	if not (HB.db.teamHealPrediction and u and UnitExists(u)) then return setPrediction(r) end
+	-- the client's own numbers whenever it has the API (even nil or secret); the
+	-- team's announcements (Heals.lua) only where the API does not exist
+	local source = UnitGetIncomingHeals
+	if not source then
+		if not HB.TeamIncoming then return setPrediction(r) end
+		source = function() return HB.TeamIncoming(r.name or HB.UnitIdent(u)) end
+	end
 	-- unit state can be restricted too: unknown state shows nothing
 	local connected, dead = safeCall(UnitIsConnected, u), safeCall(UnitIsDeadOrGhost, u)
 	if secret(connected) or secret(dead) or connected == false or dead then return setPrediction(r) end
-	local h, m, incoming = safeCall(UnitHealth, u), safeCall(UnitHealthMax, u), safeCall(UnitGetIncomingHeals, u)
+	local h, m, incoming = safeCall(UnitHealth, u), safeCall(UnitHealthMax, u), safeCall(source, u)
 	if not (num(h) and num(m) and num(incoming)) or m <= 0 or incoming <= 0 then return setPrediction(r) end
 	setPrediction(r, math.min(m, h + incoming), m)
 end

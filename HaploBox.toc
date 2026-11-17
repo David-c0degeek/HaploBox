@@ -16,4 +16,5 @@ Quests.lua
 Lead.lua
 Cast.lua
 Nodes.lua
+Heals.lua
 Options.lua

@@ -56,7 +56,8 @@ local DEFAULTS = {
 	teamShowGold        = true,   -- team frame: gold per toon and the team total
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
-	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars, where the client reports them
+	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars (the client's, else the team's own)
+	teamSendHeals       = true,   -- announce my own heals to the team for their health bars (estimates)
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
 	teamHeader          = true,   -- party rows from the game's secure group header (#2)
@@ -289,6 +290,11 @@ local function send(msg, key)
 	enqueue(msg, nil, key)
 end
 HB.SendGroup = send  -- for Quests.lua
+-- To the group, with a check made when it actually goes out and a callback once sent.
+function HB.SendGroupChecked(msg, key, onOk, check)
+	if not IsInGroup() then return end
+	enqueue(msg, nil, key, nil, onOk, check)
+end
 
 -- To one toon only, as an addon whisper. Never falls back to the group.
 local function whisper(target, msg, onFail, onOk, check)
@@ -565,6 +571,7 @@ end
 local function refreshTeam()
 	if HB.UpdateRoleControls then C_Timer.After(0.2, HB.UpdateRoleControls) end
 	if HB.UpdateCastButtons then C_Timer.After(0.2, HB.UpdateCastButtons) end
+	if HB.RevalidateIncomingHeals then HB.RevalidateIncomingHeals() end
 	if HB.ScheduleLootCheck then HB.ScheduleLootCheck(1) end
 	if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
@@ -1491,9 +1498,9 @@ end
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
-	U = "leader", A = "team", Q = "leader", B = "team", H = "team", N = "team",
+	U = "leader", A = "team", Q = "leader", B = "team", H = "team", N = "team", I = "team",
 }
-local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true, N = true, S = true }
+local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true, N = true, S = true, I = true }
 local WHISPER_ONLY = { U = true, A = true, B = true, N = true }  -- shared UI settings: never on a group channel
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
@@ -1525,6 +1532,7 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 	if kind == "H" then if HB.OnHandover then HB.OnHandover(sender, msg) end return end
 	if kind == "Q" then if HB.OnQuestAbandon then HB.OnQuestAbandon(sender, msg) end return end
 	if kind == "B" then if HB.OnAbandonResult then HB.OnAbandonResult(sender, msg) end return end
+	if kind == "I" then if HB.OnIncomingHeal then HB.OnIncomingHeal(sender, msg) end return end
 	if kind == "N" then if HB.OnNodeReport then HB.OnNodeReport(sender, msg) end return end
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
 	if kind == "P" then onLeaderFlight(sender, msg:sub(3)) return end
@@ -1749,6 +1757,7 @@ function HB.SetOption(key, value)
 	if key == "hideQuestTracker" then HB.ApplyQuestTracker() end
 	if key == "autoFFA" and value then HB.ScheduleLootCheck(0.5) end
 	if key == "autoPartyRole" and value and HB.ApplyRoles then HB.ApplyRoles() end
+	if key == "teamSendHeals" and not value and HB.StopHealAnnouncements then HB.StopHealAnnouncements() end
 	if key == "nodeShare" and not value and HB.ClearNodeQueue then HB.ClearNodeQueue() end
 	if key:match("^node") and HB.RefreshNodePins then HB.RefreshNodePins() end
 	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
