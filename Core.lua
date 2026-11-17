@@ -57,6 +57,7 @@ local DEFAULTS = {
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars (the client's, else the team's own)
+	castAssist          = false,  -- HaploBoxAssist/HaploBoxHelp cast for the leader (opt-in, saved)
 	teamSendHeals       = true,   -- announce my own heals to the team for their health bars (estimates)
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
@@ -1780,6 +1781,7 @@ function HB.SetOption(key, value)
 	if key == "autoPartyRole" and value and HB.ApplyRoles then HB.ApplyRoles() end
 	if key == "teamSendHeals" and not value and HB.StopHealAnnouncements then HB.StopHealAnnouncements() end
 	if key == "nodeShare" and not value and HB.ClearNodeQueue then HB.ClearNodeQueue() end
+	if key == "castAssist" and HB.UpdateCastButtons then HB.UpdateCastButtons() end
 	if key:match("^node") and HB.RefreshNodePins then HB.RefreshNodePins() end
 	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
 	return value
@@ -1815,7 +1817,7 @@ local function help()
 	print_("  /hb lead - take over as leader; the team keeps its order and roles")
 	print_("  /hb controls - what the Follow leader, Assist leader and Follow healer keys do now")
 	print_("  /hb nodes [clear] - gathering nodes the followers found (not yet checked in the game)")
-	print_("  /hb cast add harm|help <spell>, list, remove <slot>, on, off - spells that cast at the leader's target (not yet checked in the game)")
+	print_("  /hb cast [on|off] - /click HaploBoxAssist <spell> and /click HaploBoxHelp <spell> cast for the leader (not yet checked in the game)")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
 	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")

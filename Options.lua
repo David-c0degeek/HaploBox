@@ -36,7 +36,7 @@ local SECTIONS = {
 		{ "teamHealPrediction", "toggle", "Incoming heals on the health bars",
 			help = "From the game where it reports them, else from the team's own healers (estimates)." },
 		{ "teamSendHeals", "toggle", "Tell the team about my heals (estimated sizes)",
-			help = "Single-target heals with a cast time, once you have cast that rank before." },
+			help = "Single-target heals with a cast time, sized from the spell's description." },
 		{ "teamCastBars", "toggle", "Cast and channel bar on the health bars" },
 		{ "teamManaRule", "toggle", "Five-second mana rule timer on the mana bars (Classic Era only)" },
 		{ "teamShowHots", "toggle", "Heal-over-time icons on the health bars" },
@@ -55,6 +55,8 @@ local SECTIONS = {
 	{ id = "follow", title = "Follow & alerts", items = {
 		{ "alertOnFollowStart", "toggle", "Also show a message when a follower starts following", who = "leader" },
 		{ "relayErrors", "toggle", "Send my cast errors (range, line of sight, mana) to the leader", who = "followers" },
+		{ "castAssist", "toggle", "HaploBoxAssist and HaploBoxHelp cast for the leader", who = "followers",
+			help = "Your own macros: /click HaploBoxAssist Frostbolt, /click HaploBoxHelp Flash_Heal (_ for spaces). Not yet checked in the game." },
 		{ "showRelayedErrors", "toggle", "Show followers' cast errors in chat", who = "leader" },
 		{ "bagFullAlert", "toggle", "Message when a character's bags are full", who = "leader" },
 		{ "testAlert", "action", "Test leader alert", run = function() SlashCmdList.HAPLOBOX("test alert") end },

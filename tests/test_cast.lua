@@ -1,15 +1,14 @@
--- Assist-or-cast spell buttons (#8).
+-- Assist-or-cast buttons (#8): /click HaploBoxAssist <spell>, /click HaploBoxHelp <spell>.
 
-local function text(i) return (_G["HaploBoxCast" .. i].attrs or {}).macrotext end
+local function assist(spell) return clickButton("HaploBoxAssist", spell) end
+local function help(spell) return clickButton("HaploBoxHelp", spell) end
 
-local function setup(me, units)
+local function setup(me, units, db)
 	W.header = true
 	W.me = me or "Nyra"
 	party(unpack(units or { "Haplo", "Elya" }))
-	login({}, { leader = "Haplo", order = { "Haplo", "Elya", "Nyra" }, roles = {} })
-	HB.CastCommand("add harm Frostbolt")
-	HB.CastCommand("add help Flash Heal")
-	advance(1)
+	login(db or {}, { leader = "Haplo", order = { "Haplo", "Elya", "Nyra" }, roles = {} })
+	advance(4)
 end
 
 local function on()
@@ -17,119 +16,117 @@ local function on()
 	advance(1)
 end
 
-test("inactive by default: spells cast normally", function()
+test("off by default: spells cast normally, heals on yourself with Shift", function()
 	setup()
-	eq(text(1), "/cast Frostbolt", "harm normal")
-	eq(text(2), "/cast [mod:shift,@player][@mouseover,help,nodead][] Flash Heal", "help normal")
+	eq(assist("Frostbolt"), "/cast Frostbolt", "damage normal")
+	eq(help("Flash_Heal"), "/cast [mod:shift,@player][] Flash Heal", "help normal, _ is a space")
 	eq(HB.AssistCastOn(), false, "off by default")
+	eq(HaploBoxAssist.attrs.useOnKeyDown, false, "assist acts on the up click /click gives")
+	eq(HaploBoxHelp.attrs.useOnKeyDown, false, "help too")
 end)
 
-test("on, as a follower in the team: harm at the leader's target, help on the leader by name", function()
+test("on, as a follower in the team: damage at the leader's target, help on the leader by name", function()
 	setup()
 	on()
-	eq(text(1), "/cast [@party1target,harm,nodead] Frostbolt", "harm follows the leader's token")
-	eq(text(2), "/cast [mod:shift,@player][@mouseover,help,nodead][@Haplo,help,nodead] Flash Heal", "help by name")
+	eq(assist("Frostbolt"), "/cast [@party1target,harm,nodead] Frostbolt", "the leader's token")
+	eq(help("Power_Word:_Fortitude"), "/cast [mod:shift,@player][@Haplo,help,nodead][] Power Word: Fortitude", "by name")
 	eq(HaploBoxLeaderHeader.attrs.nameList, "Haplo", "header lists only the leader")
 end)
 
-test("any group change in combat disarms harm at once; help stays", function()
+test("no mouseover anywhere", function()
+	setup()
+	assert(not help("Renew"):find("mouseover"), "off")
+	on()
+	assert(not help("Renew"):find("mouseover"), "on")
+	assert(not assist("Frostbolt"):find("mouseover"), "damage")
+end)
+
+test("a click without a spell, or with unsafe text, casts nothing and clears the last text", function()
 	setup()
 	on()
+	eq(assist("Frostbolt"), "/cast [@party1target,harm,nodead] Frostbolt", "built")
+	for _, bad in ipairs({ "LeftButton", "RightButton", "Button4", "a;b", "[x]", "a/run", "a|cff", "x\ny", string.rep("x", 61), "" }) do
+		eq(assist(bad), "", "refused: " .. bad)
+	end
+	eq(help("LeftButton"), "", "help too")
+	eq(assist("Éclair_de_givre"), "/cast [@party1target,harm,nodead] Éclair de givre", "localized names are read as typed")
+	eq(assist("Frostbolt(Rank_1)"), "/cast [@party1target,harm,nodead] Frostbolt(Rank 1)", "ranks")
+end)
+
+test("any group change in combat disarms damage at once, also text already built; help stays", function()
+	setup()
+	on()
+	assist("Frostbolt")
 	W.combat = true
 	W.units = { party1 = "Elya", party2 = "Haplo" }  -- the leader's token moves
 	fire("GROUP_ROSTER_UPDATE")
-	eq(text(1), "", "harm disarmed by the secure header")
-	eq(text(2), "/cast [mod:shift,@player][@mouseover,help,nodead][@Haplo,help,nodead] Flash Heal", "help by name unaffected")
+	eq(HaploBoxAssist.attrs.macrotext, "", "built text emptied")
+	eq(assist("Frostbolt"), "", "disarmed by the secure header")
+	eq(help("Flash_Heal"), "/cast [mod:shift,@player][@Haplo,help,nodead][] Flash Heal", "help by name unaffected")
 	W.combat = false
 	fire("PLAYER_REGEN_ENABLED")
 	advance(1)
-	eq(text(1), "/cast [@party2target,harm,nodead] Frostbolt", "re-armed after combat on the new token")
+	eq(assist("Frostbolt"), "/cast [@party2target,harm,nodead] Frostbolt", "re-armed after combat on the new token")
 end)
 
-test("an outsider joining in combat disarms, even with the leader's token unchanged", function()
+test("an outsider joining disarms in combat and turns it off for good", function()
 	setup()
 	on()
 	W.combat = true
 	W.units.party3 = "Mallory"
 	fire("GROUP_ROSTER_UPDATE")
-	eq(text(1), "", "disarmed")
+	eq(assist("Frostbolt"), "", "disarmed")
+	eq(HB.AssistCastOn(), false, "intent cleared at once")
+	W.units.party3 = nil
+	fire("GROUP_ROSTER_UPDATE")
 	W.combat = false
 	fire("PLAYER_REGEN_ENABLED")
 	advance(1)
-	eq(HB.AssistCastOn(), false, "mixed group turns it off")
-	eq(text(1), "/cast Frostbolt", "normal cast")
+	eq(HB.AssistCastOn(), false, "stays off")
+	eq(assist("Frostbolt"), "/cast Frostbolt", "normal cast")
+	eq(printedMatching("turned off: someone outside the team"), 1, "said")
 end)
 
-test("the leader leaving in combat disarms", function()
+test("the leader leaving, or a raid, in combat disarms", function()
 	setup()
 	on()
 	W.combat = true
 	W.units = { party1 = "Elya" }
 	fire("GROUP_ROSTER_UPDATE")
-	eq(text(1), "", "disarmed")
-end)
-
-test("turning into a raid in combat disarms through the state driver", function()
+	eq(assist("Frostbolt"), "", "leader gone")
 	setup()
 	on()
 	W.combat = true
 	W.raid = true
 	fire("GROUP_ROSTER_UPDATE")
-	eq(text(1), "", "disarmed although the hidden header keeps its unit")
+	eq(assist("Frostbolt"), "", "raid: disarmed although the hidden header keeps its unit")
 end)
 
-test("going solo disarms and turns it off", function()
+test("solo or in a raid it casts normally and comes back in the team", function()
 	setup()
 	on()
 	W.units = {}
 	fire("GROUP_ROSTER_UPDATE")
 	advance(1)
-	eq(HB.AssistCastOn(), false, "off")
-	eq(text(1), "/cast Frostbolt", "normal")
+	eq(HB.AssistCastOn(), true, "still on")
+	eq(assist("Frostbolt"), "/cast Frostbolt", "solo: normal")
+	eq(help("Renew"), "/cast [mod:shift,@player][] Renew", "solo help: normal")
+	W.units = { party1 = "Haplo", party2 = "Elya" }
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(assist("Frostbolt"), "/cast [@party1target,harm,nodead] Frostbolt", "back in the team")
 end)
 
-test("not on the leader, and off after every login", function()
+test("not on the leader; the choice is kept after logging in again", function()
 	setup("Haplo", { "Elya", "Nyra" })
 	on()
-	eq(HB.AssistCastOn(), false, "leader cannot turn it on")
-	eq(text(1), "/cast Frostbolt", "normal")
+	eq(assist("Frostbolt"), "/cast Frostbolt", "the leader casts normally")
 	setup()
 	on()
-	eq(HB.AssistCastOn(), true, "on")
-	fire("PLAYER_LOGIN")
-	advance(5)
-	eq(HB.AssistCastOn(), false, "off after login")
-	eq(text(1), "/cast Frostbolt", "normal after login")
-end)
-
-test("an outsider passing through in combat turns it off for good", function()
-	setup()
-	on()
-	W.combat = true
-	W.units.party3 = "Mallory"
-	fire("GROUP_ROSTER_UPDATE")
-	W.units.party3 = nil
-	fire("GROUP_ROSTER_UPDATE")
-	eq(HB.AssistCastOn(), false, "intent cleared in combat")
-	W.combat = false
-	fire("PLAYER_REGEN_ENABLED")
-	advance(1)
-	eq(text(1), "/cast Frostbolt", "not re-armed by itself")
-end)
-
-test("a raid in combat turns it off for good", function()
-	setup()
-	on()
-	W.combat = true
-	W.raid = true
-	fire("GROUP_ROSTER_UPDATE")
-	W.raid = false
-	fire("GROUP_ROSTER_UPDATE")
-	eq(HB.AssistCastOn(), false, "intent cleared")
-	W.combat = false
-	fire("PLAYER_REGEN_ENABLED")
-	advance(1)
-	eq(text(1), "/cast Frostbolt", "normal")
+	local db = HB.db
+	setup(nil, nil, db)   -- a reload into the same team
+	eq(HB.AssistCastOn(), true, "kept")
+	eq(assist("Frostbolt"), "/cast [@party1target,harm,nodead] Frostbolt", "active after the reload")
 end)
 
 test("without the secure header, assisted damage does nothing instead of casting at your target", function()
@@ -137,17 +134,27 @@ test("without the secure header, assisted damage does nothing instead of casting
 	W.me = "Nyra"
 	party("Haplo", "Elya")
 	login({}, { leader = "Haplo", order = { "Haplo", "Elya", "Nyra" }, roles = {} })
-	HB.CastCommand("add harm Frostbolt")
-	HB.CastCommand("add help Flash Heal")
+	advance(4)
+	eq(assist("Frostbolt"), "/cast Frostbolt", "off: normal")
 	on()
 	eq(HB.AssistCastOn(), true, "on")
-	eq(text(1), "", "inert")
-	eq(text(2), "/cast [mod:shift,@player][@mouseover,help,nodead][@Haplo,help,nodead] Flash Heal", "heals still work")
-	eq(printedMatching("not available on this client"), 1, "said")
+	eq(assist("Frostbolt"), "", "inert")
+	eq(help("Flash_Heal"), "/cast [mod:shift,@player][@Haplo,help,nodead][] Flash Heal", "heals still work")
 	assert(HB.CastStateText():find("heals only"), "frame says so")
 end)
 
-test("the team frame shows the state, and slot changes wait for the end of combat", function()
+test("without wrapped clicks both buttons do nothing, and that is said once", function()
+	SecureHandlerWrapScript = nil
+	setup()
+	on()
+	eq(assist("Frostbolt"), "", "assist inert")
+	eq(help("Renew"), "", "help inert")
+	HB.UpdateCastButtons()
+	HB.UpdateCastButtons()
+	eq(printedMatching("not available on this client"), 0, "said once, at login, not again")
+end)
+
+test("the team frame shows the state; changes wait for the end of combat", function()
 	setup()
 	eq(HB.CastStateText(), nil, "nothing while off")
 	on()
@@ -155,33 +162,6 @@ test("the team frame shows the state, and slot changes wait for the end of comba
 	W.combat = true
 	fire("GROUP_ROSTER_UPDATE")
 	assert(HB.CastStateText():find("after combat"), "pending shown")
-	HB.CastCommand("remove 1")
-	eq(HB.db.castSpells[1].spell, "Frostbolt", "not removed in combat")
-	eq(printedMatching("after combat"), 1, "said")
-end)
-
-test("slots keep their numbers", function()
-	setup()
-	HB.CastCommand("remove 1")
-	advance(1)
-	eq(text(1), "", "slot 1 empty")
-	eq(text(2), "/cast [mod:shift,@player][@mouseover,help,nodead][] Flash Heal", "slot 2 unchanged")
-	HB.CastCommand("add harm Fireball")
-	advance(1)
-	eq(text(1), "/cast Fireball", "first empty slot reused")
-end)
-
-test("bad spell names and bad saved records are refused", function()
-	setup()
-	HB.CastCommand("add harm Frost]bolt")
-	HB.CastCommand("add harm " .. string.rep("x", 61))
-	HB.CastCommand("add other Frostbolt")
-	eq(HB.db.castSpells[3], nil, "nothing added")
-	HB.db.castSpells[3] = { kind = "harm", spell = "a\n/run x" }
-	HB.db.castSpells[4] = "junk"
-	HB.db.castSpells.x = { kind = "harm", spell = "Fire" }
-	HB.UpdateCastButtons()
-	eq(HB.db.castSpells[3], nil, "bad name dropped")
-	eq(HB.db.castSpells[4], nil, "bad record dropped")
-	eq(HB.db.castSpells.x, nil, "bad slot dropped")
+	HB.CastCommand("")
+	eq(printedMatching("/click HaploBoxAssist Frostbolt"), 1, "examples shown")
 end)

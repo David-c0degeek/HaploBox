@@ -275,6 +275,21 @@ function runSnippet(frame, code, ...)
 	local fn = assert(loadstring(code))
 	fn(frame, ...)
 end
+-- the restricted environment's string functions
+strlen, strfind, gsub = strlen or string.len, strfind or string.find, gsub or string.gsub
+-- a wrapped OnClick: the pre-body runs with self, button, down before the click
+function SecureHandlerWrapScript(frame, script, header, pre)
+	frame.wraps = frame.wraps or {}
+	frame.wraps[script] = pre
+end
+-- /click <name> <button>: the wrap first, then the button's action
+function clickButton(name, button)
+	local b = _G[name]
+	if b.wraps and b.wraps.OnClick then
+		runSnippet(b, "local self, button, down = ... " .. b.wraps.OnClick, button or "LeftButton", false)
+	end
+	return b.attrs and b.attrs.macrotext
+end
 function SecureHandlerSetFrameRef(f, k, other)
 	f.attrs = f.attrs or {}
 	f.attrs["frameref-" .. k] = other

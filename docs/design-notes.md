@@ -231,13 +231,18 @@ hand. HaploBox will not ship a spawn database shown as live nodes.
 
 This replaces the `/assist` candidate below, which stays for the record.
 
-- **Buttons:** `HaploBoxCast1` to `HaploBoxCast12` hold spells in fixed slots. The
-  player's macro clicks one; HaploBox never edits macros.
+- **Buttons:** `HaploBoxAssist` (damage) and `HaploBoxHelp` (heals, HoTs, buffs).
+  The player's own macro is `/click HaploBoxAssist Frostbolt`: `/click` passes the
+  second word as the mouse button, and a `SecureHandlerWrapScript` pre-click
+  snippet (it runs before the button's own click) builds the macro text from it
+  (`_` becomes a space). Control characters, `; [ ] / | \` and the real mouse
+  button names give an empty text. Not yet checked: that WoW Forever's `/click`
+  passes any word through as the button.
 - **Damage:** `/cast [@<leader token>target,harm,nodead] <spell>`. Without a living
   enemy target on the leader nothing is cast, and the player's target never
   changes, so a failed assist cannot hit an old, unrelated enemy.
-- **Heals:** `[mod:shift,@player][@mouseover,help,nodead][@<leader name>,help,nodead]`.
-  The leader is named, so a moving party token cannot redirect the heal.
+- **Help:** `[mod:shift,@player][@<leader name>,help,nodead][]`; no mouseover
+  (owner decision). The leader is named, so a moving party token cannot redirect it.
 - **Secure disarm in combat:** a party token can move in combat, so armed damage
   buttons are emptied by secure code on any group change:
   - a leader-only `SecureGroupHeaderTemplate` runs `refreshUnitChange` on every
@@ -246,8 +251,8 @@ This replaces the `/assist` candidate below, which stays for the record.
   - `_onattributechanged` runs when the leader's row loses its unit;
   - a state driver runs on any change away from a party.
   HaploBox arms the buttons again only out of combat, after checking the group.
-- **Off switch:** off after every login, and off in solo, raid, mixed or
-  unconfirmed groups and on the leader.
+- **Off switch:** opt-in, saved (`castAssist`). Normal casts in solo, raid or
+  unconfirmed groups and on the leader; someone outside the team turns it off.
 - **verify:** that the header, `refreshUnitChange`, `_onattributechanged` and the
   state driver behave like this on Forever and Classic Era. Also verify
   `@<token>target` and `@<name>` in macro conditionals, and that `/click` reaches

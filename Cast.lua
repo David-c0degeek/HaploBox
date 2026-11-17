@@ -1,57 +1,89 @@
--- Assist-or-cast spell buttons (#8). Not yet checked in the game: do not rely on it.
+-- Assist-or-cast buttons (#8). Not yet checked in the game: do not rely on it.
 --
--- The player registers spells in fixed slots (/hb cast add harm|help <spell>) and puts
--- "/click HaploBoxCast<n>" in a macro of their own; HaploBox never edits macros and
--- never presses a button. Each button's text is set out of combat:
---   help, active:   /cast [mod:shift,@player][@mouseover,help,nodead][@<leader>,help,nodead] <spell>
---   help, inactive: /cast [mod:shift,@player][@mouseover,help,nodead][] <spell>
---   harm, active:   /cast [@<leader's party token>target,harm,nodead] <spell>
---   harm, inactive: /cast <spell>
--- Active means: this toon is a follower in a party of only the accepted team, the
--- leader is in it, and the player turned it on since logging in (/hb cast on).
+-- Two hidden secure buttons take the spell from the player's own macro:
+--   /click HaploBoxAssist Frostbolt        damage
+--   /click HaploBoxHelp Flash_Heal         heals, HoTs, buffs ("_" stands for a space)
+-- /click passes the second word as the mouse button; a secure pre-click snippet
+-- turns it into the macro text, so HaploBox never edits macros, never presses a
+-- button and needs no list of spells. Spell names are read as typed (any language);
+-- control characters and ; [ ] / | \ are refused, and so are the real mouse button
+-- names (a key binding click without a spell does nothing).
+--   Assist, active:   /cast [@<leader's party token>target,harm,nodead] <spell>
+--   Assist, inactive: /cast <spell>
+--   Help, active:     /cast [mod:shift,@player][@<leader>,help,nodead][] <spell>
+--   Help, inactive:   /cast [mod:shift,@player][] <spell>
+-- No mouseover anywhere (owner decision). Active means: this toon is a follower in a
+-- party of only the accepted team, the leader is in it, and the player turned it on
+-- (/hb cast on, saved; someone outside the team joining turns it off again).
 --
--- Harm uses a party token, which can move to someone else in combat. So an armed harm
--- button is disarmed (its text emptied: pressing it does nothing) by secure code the
--- moment the group changes in any way, also in combat:
+-- Assist uses a party token, which can move to someone else in combat. So once
+-- armed, it is disarmed (its prefix and any built text emptied: a click does
+-- nothing) by secure code the moment the group changes in any way, also in combat:
 --   * a group header that lists only the leader runs DISARM on every roster or name
 --     update (refreshUnitChange), and when the leader's row loses its unit;
 --   * a state driver runs DISARM whenever the group is no longer a party.
 -- HaploBox arms it again only out of combat, after checking the group again.
 local HB = HaploBox
 
-local MAX = 12
-local buttons = {}
-local assistOn = false   -- never saved: off after every login
 local pending = false
 local warned = false
 
-for i = 1, MAX do
-	local b = CreateFrame("Button", "HaploBoxCast" .. i, UIParent, "SecureActionButtonTemplate")
-	b:RegisterForClicks("AnyUp")
+local function newButton(name)
+	local b = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate")
+	b:RegisterForClicks("AnyUp", "AnyDown")
 	b:Hide()  -- reached with /click from the player's macro
 	b:SetAttribute("type", "macro")
+	-- /click gives no "down" edge: act on the up click whatever ActionButtonUseKeyDown says
+	b:SetAttribute("useOnKeyDown", false)
 	b:SetAttribute("macrotext", "")
-	buttons[i] = b
+	b:SetAttribute("hb-prefix", "")
+	return b
 end
+local assistBtn = newButton("HaploBoxAssist")
+local helpBtn = newButton("HaploBoxHelp")
 
 local DISARM = [[
-for i = 1, 12 do
-	local b = self:GetFrameRef("cast" .. i)
-	if b and b:GetAttribute("hb-armed") then
-		b:SetAttribute("macrotext", "")
-		b:SetAttribute("hb-armed", nil)
-	end
+local b = self:GetFrameRef("assist")
+if b and b:GetAttribute("hb-armed") then
+	b:SetAttribute("hb-prefix", "")
+	b:SetAttribute("macrotext", "")
+	b:SetAttribute("hb-armed", nil)
 end
 ]]
 HB.CAST_DISARM = DISARM
 
-local function refAll(frame)
-	for i, b in ipairs(buttons) do SecureHandlerSetFrameRef(frame, "cast" .. i, b) end
+-- Runs before the button's own click: the clicked "button" is the spell.
+local BUILD = [==[
+local spell = button
+local ok = type(spell) == "string" and strlen(spell) >= 1 and strlen(spell) <= 60
+	and not strfind(spell, "[%c;%[%]/|\\]")
+	and spell ~= "LeftButton" and spell ~= "RightButton" and spell ~= "MiddleButton"
+	and spell ~= "Button4" and spell ~= "Button5"
+local prefix = self:GetAttribute("hb-prefix") or ""
+if ok and prefix ~= "" then
+	self:SetAttribute("macrotext", prefix .. gsub(spell, "_", " "))
+else
+	self:SetAttribute("macrotext", "")
 end
+]==]
+HB.CAST_BUILD = BUILD
 
--- ---------------------------------------------------------------- secure disarm
-local leaderHeader, leaderChild, ctx
-local harmReady = nil  -- nil: not tried; false: not available on this client
+-- ---------------------------------------------------------------- secure parts
+local leaderHeader, ctx
+local wrapReady = nil  -- the click builder; nil: not tried; false: not on this client
+local harmReady = nil  -- the secure disarm for Assist
+
+local function setupWrap()
+	if wrapReady ~= nil then return wrapReady end
+	wrapReady = false
+	if not SecureHandlerWrapScript then return false end
+	local ok, w = pcall(CreateFrame, "Frame", "HaploBoxCastWrap", UIParent, "SecureHandlerBaseTemplate")
+	if not ok or not w then return false end
+	local ok1 = pcall(SecureHandlerWrapScript, assistBtn, "OnClick", w, BUILD)
+	local ok2 = pcall(SecureHandlerWrapScript, helpBtn, "OnClick", w, BUILD)
+	wrapReady = (ok1 and ok2) and true or false
+	return wrapReady
+end
 
 local function setupSecure()
 	if harmReady ~= nil then return harmReady end
@@ -70,37 +102,17 @@ local function setupSecure()
 	h:SetAttribute("startingIndex", 1)
 	local c = h:GetAttribute("child1")
 	if not c then h:Hide() return false end
-	refAll(c)
+	SecureHandlerSetFrameRef(c, "assist", assistBtn)
 	c:SetAttribute("refreshUnitChange", DISARM)
 	c:SetAttribute("_onattributechanged", "if name == 'unit' then " .. DISARM .. " end")
 	ok, ctx = pcall(CreateFrame, "Frame", "HaploBoxCastContext", UIParent, "SecureHandlerStateTemplate")
 	if not ok or not ctx then h:Hide() return false end
-	refAll(ctx)
+	SecureHandlerSetFrameRef(ctx, "assist", assistBtn)
 	ctx:SetAttribute("_onstate-hbctx", "if newstate ~= 'party' then " .. DISARM .. " end")
 	RegisterStateDriver(ctx, "hbctx", "[group:raid] raid; [group:party] party; solo")
-	leaderHeader, leaderChild = h, c
+	leaderHeader = h
 	harmReady = true
 	return true
-end
-
--- ---------------------------------------------------------------- spells
-local function validSpell(s)
-	return type(s) == "string" and #s > 0 and #s <= 60 and not s:find("[\r\n|;%[%]]")
-end
-
-local function spells()
-	if type(HB.db.castSpells) ~= "table" then HB.db.castSpells = {} end
-	local t = HB.db.castSpells
-	for i = 1, MAX do
-		local e = t[i]
-		if e ~= nil and not (type(e) == "table" and validSpell(e.spell) and (e.kind == "harm" or e.kind == "help")) then
-			t[i] = nil
-		end
-	end
-	for k in pairs(t) do
-		if type(k) ~= "number" or k < 1 or k > MAX or k % 1 ~= 0 then t[k] = nil end
-	end
-	return t
 end
 
 -- ---------------------------------------------------------------- state
@@ -117,7 +129,7 @@ local function context()
 	if not IsInGroup() then return nil, nil, "solo" end
 	if IsInRaid() then return nil, nil, "in a raid" end
 	local status = HB.GroupStatus()
-	if status == "mixed" then return nil, nil, "someone outside the team is in the group" end
+	if status == "mixed" then return nil, nil, "someone outside the team is in the group", "mixed" end
 	if status ~= "team" then return nil, nil, "group not confirmed yet" end
 	if HB.IAmLeader() then return nil, nil, "you are the leader" end
 	local leader = HB.Leader()
@@ -126,7 +138,6 @@ local function context()
 	return leader, token
 end
 
-local function headerName(n) return HB.HeaderName(n) end
 
 -- A small line under the team frame while assisted casting is on or waiting.
 local note
@@ -138,9 +149,10 @@ local function showState()
 		note:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 2, -16)
 	end
 	local text
+	local on = HB.db.castAssist
 	if pending then
-		text = "|cffffaa00assisted casting: " .. (assistOn and "on" or "off") .. ", buttons update after combat|r"
-	elseif assistOn then
+		text = "|cffffaa00assisted casting: " .. (on and "on" or "off") .. ", buttons update after combat|r"
+	elseif on then
 		text = harmReady == false and "|cffffaa00assisted casting: heals only (damage not available here)|r"
 			or "|cff66ff66assisted casting: on|r"
 	end
@@ -150,11 +162,11 @@ end
 HB.CastStateText = function() return note and note:IsShown() and note:GetText() or nil end
 
 function HB.UpdateCastButtons()
-	-- the intent is checked at once, also in combat: once the group stops being the
-	-- team, the player has to turn it on again
-	local leader, token, why = context()
-	if assistOn and not leader then
-		assistOn = false
+	-- someone outside the team joining clears the intent at once, also in combat;
+	-- solo, a raid or a group not confirmed yet only make the buttons cast normally
+	local leader, token, why, status = context()
+	if HB.db.castAssist and status == "mixed" then
+		HB.db.castAssist = false
 		HB.print("assisted casting turned off: " .. why .. " (/hb cast on to turn it on again)")
 	end
 	if InCombatLockdown() then
@@ -163,46 +175,50 @@ function HB.UpdateCastButtons()
 		return
 	end
 	pending = false
-	local active = assistOn and leader
-	local harm = active and setupSecure()
-	if active and not harm and not warned then
-		warned = true
-		HB.print("assisted damage spells are not available on this client; they do nothing while assisted casting is on")
-	end
-	-- name list first: the header's own update disarms, then the texts are set below
-	if leaderHeader then leaderHeader:SetAttribute("nameList", harm and headerName(leader) or "") end
-	local t = spells()
-	for i, b in ipairs(buttons) do
-		local e, text, armed = t[i], "", nil
-		if e and e.kind == "help" then
-			text = active and ("/cast [mod:shift,@player][@mouseover,help,nodead][@" .. leader .. ",help,nodead] " .. e.spell)
-				or ("/cast [mod:shift,@player][@mouseover,help,nodead][] " .. e.spell)
-		elseif e then
-			if harm then
-				text, armed = "/cast [@" .. token .. "target,harm,nodead] " .. e.spell, true
-			elseif active then
-				text = ""  -- assisted, but no secure disarm here: do nothing rather than cast at your own target
-			else
-				text = "/cast " .. e.spell
-			end
+	if not setupWrap() then
+		if not warned then
+			warned = true
+			HB.print("HaploBoxAssist and HaploBoxHelp are not available on this client: they do nothing")
 		end
-		b:SetAttribute("macrotext", text)
-		b:SetAttribute("hb-armed", armed)
+		for _, b in ipairs({ assistBtn, helpBtn }) do
+			b:SetAttribute("hb-prefix", "")
+			b:SetAttribute("macrotext", "")
+		end
+		showState()
+		return
 	end
+	local active = HB.db.castAssist and leader
+	local harm = active and setupSecure()
+	-- name list first: the header's own update disarms, then the prefixes are set below
+	if leaderHeader then leaderHeader:SetAttribute("nameList", harm and HB.HeaderName(leader) or "") end
+	local assist, armed
+	if harm then
+		assist, armed = "/cast [@" .. token .. "target,harm,nodead] ", true
+	elseif active then
+		assist = ""  -- assisted, but no secure disarm here: do nothing rather than cast at your own target
+	else
+		assist = "/cast "
+	end
+	assistBtn:SetAttribute("hb-prefix", assist)
+	assistBtn:SetAttribute("hb-armed", armed)
+	assistBtn:SetAttribute("macrotext", "")
+	helpBtn:SetAttribute("hb-prefix", active and ("/cast [mod:shift,@player][@" .. leader .. ",help,nodead][] ")
+		or "/cast [mod:shift,@player][] ")
+	helpBtn:SetAttribute("macrotext", "")
 	showState()
 end
 
 function HB.CastPending() return pending end
-function HB.AssistCastOn() return assistOn end
+function HB.AssistCastOn() return HB.db.castAssist and true or false end
 
 function HB.SetAssistCast(on)
 	if on then
 		local leader, _, why = context()
-		if not leader then HB.print("assisted casting stays off: " .. why) return end
-		assistOn = true
-		HB.print("assisted casting on until you log out or the group changes. Not yet checked in the game.")
+		HB.db.castAssist = true
+		HB.print("assisted casting on (kept after logging in). Not yet checked in the game."
+			.. (leader and "" or (" Casting normally for now: " .. why .. ".")))
 	else
-		assistOn = false
+		HB.db.castAssist = false
 		HB.print("assisted casting off")
 	end
 	HB.UpdateCastButtons()
@@ -210,55 +226,22 @@ function HB.SetAssistCast(on)
 end
 
 function HB.CastCommand(rest)
-	local cmd, arg = (rest or ""):match("^(%S*)%s*(.-)%s*$")
-	cmd = cmd:lower()
-	local t = spells()
+	local cmd = ((rest or ""):match("^(%S*)") or ""):lower()
 	if cmd == "on" or cmd == "off" then
 		HB.SetAssistCast(cmd == "on")
-	elseif (cmd == "add" or cmd == "remove") and InCombatLockdown() then
-		HB.print("change the spell slots after combat")
-	elseif cmd == "add" then
-		local kind, spell = arg:match("^(%a+)%s+(.+)$")
-		kind = kind and kind:lower()
-		if not (kind == "harm" or kind == "help") or not validSpell(spell) then
-			HB.print("usage: /hb cast add harm|help <spell name>")
-			return
-		end
-		for i = 1, MAX do
-			if not t[i] then
-				t[i] = { kind = kind, spell = spell }
-				HB.UpdateCastButtons()
-				HB.print(spell .. " is in slot " .. i .. ": make a macro with |cffffff00/click HaploBoxCast" .. i .. "|r")
-				return
-			end
-		end
-		HB.print("all " .. MAX .. " slots are used; /hb cast remove <slot> first")
-	elseif cmd == "remove" then
-		local i = tonumber(arg)
-		if not (i and t[i]) then HB.print("no spell in that slot") return end
-		t[i] = nil  -- the other slots keep their numbers, so other macros stay right
-		HB.UpdateCastButtons()
-		HB.print("slot " .. i .. " is empty now")
-	else
-		local any = false
-		for i = 1, MAX do
-			local e = t[i]
-			if e then
-				any = true
-				HB.print(i .. ": " .. e.kind .. " " .. e.spell .. "  (/click HaploBoxCast" .. i .. ")")
-			end
-		end
-		if not any then HB.print("no spells yet: /hb cast add harm Frostbolt") end
-		local _, _, why = context()
-		HB.print("assisted casting: " .. (assistOn and "on" or "off") .. (why and (" (" .. why .. ")") or "")
-			.. (pending and ", |cffffaa00waits for the end of combat|r" or ""))
+		return
 	end
+	HB.print("make your own macros, for example:")
+	HB.print("  |cffffff00/click HaploBoxAssist Frostbolt|r  damage at the leader's target")
+	HB.print("  |cffffff00/click HaploBoxHelp Flash_Heal|r  heal, HoT or buff on the leader (Shift: yourself; _ for spaces)")
+	local _, _, why = context()
+	HB.print("assisted casting: " .. (HB.db.castAssist and "on" or "off") .. (why and (" (" .. why .. ")") or "")
+		.. (pending and ", |cffffaa00waits for the end of combat|r" or "") .. ". /hb cast on|off")
 end
 
 local ev = CreateFrame("Frame")
 ev:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_LOGIN" then
-		assistOn = false
 		C_Timer.After(3, HB.UpdateCastButtons)
 	else
 		HB.UpdateCastButtons()  -- at once: an outsider passing through in combat still turns it off
