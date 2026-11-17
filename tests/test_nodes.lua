@@ -563,6 +563,7 @@ end)
 
 test("the leader checks unknown reports and shows them as ?", function()
 	asLeader()
+	where(0.48, 0.5)  -- 60 yards from the markers: arriving would clear a ?
 	for _, bad in ipairs({ N("u", 5000, 5000, "h", 0, "Peacebloom"), N("h", 5000, 5000, "h", 0, "?"),
 		N("u", 5000, 5000, "g", 0, "?"), N("u", 5000, 5000, "w", 0, "?") }) do
 		addon("Elya", bad, "WHISPER")
@@ -584,6 +585,7 @@ end)
 
 test("a named sighting replaces an unknown one; an unknown never downgrades a named one", function()
 	asLeader()
+	where(0.48, 0.5)  -- 60 yards from the markers: arriving would clear a ?
 	addon("Elya", N("u", 5000, 5000, "h", 0, "?"), "WHISPER")
 	addon("Nyra", N("h", 5005, 5000, "w", 0, "Earthroot"), "WHISPER")
 	eq(#HB.NodeMarkers(), 1, "one marker")
@@ -595,6 +597,7 @@ end)
 
 test("a gather removes an unknown marker, and an older unknown cannot bring it back", function()
 	asLeader()
+	where(0.48, 0.5)  -- 60 yards from the markers: arriving would clear a ?
 	addon("Elya", N("u", 5000, 5000, "h", 30, "?"), "WHISPER")
 	addon("Nyra", N("h", 5005, 5000, "g", 10, "Earthroot"), "WHISPER")
 	eq(#HB.NodeMarkers(), 0, "gathered")
@@ -622,10 +625,67 @@ end)
 
 test("a rejected old named sighting leaves a newer unknown marker alone", function()
 	asLeader()
+	where(0.48, 0.5)  -- 60 yards from the markers: arriving would clear a ?
 	addon("Nyra", N("h", 5000, 5000, "g", 50, "Earthroot"), "WHISPER")
 	addon("Elya", N("u", 5003, 5000, "h", 40, "?"), "WHISPER")
 	eq(#HB.NodeMarkers(), 1, "newer ? shows")
 	addon("Elya", N("h", 5002, 5000, "h", 55, "Earthroot"), "WHISPER")
 	eq(#HB.NodeMarkers(), 1, "old named report rejected, ? kept")
 	eq(HB.NodeMarkers()[1].kind, "u", "still ?")
+end)
+
+test("a follower sends at most one ? every 15 seconds", function()
+	asFollower({ nodeUnknown = true, debug = true })
+	local s = opaqueSecret()
+	GetMouseFoci = function() return { Minimap } end
+	hoverMinimap(s, 30, 0, "UIParent")
+	advance(5)
+	hoverMinimap(s, 0, 30, "UIParent")
+	advance(9.9)
+	hoverMinimap(s, -30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 1, "one within 15 seconds")
+	eq(printedMatching("another %? within 15 seconds"), 2, "said why")
+	hoverMinimap(s, 0, -30, "UIParent")
+	advance(2)
+	eq(#reports(), 2, "allowed again after 15 seconds")
+end)
+
+test("? markers: 2 minutes, merged when close, at most 3, named markers keep 10 minutes", function()
+	asLeader()
+	where(0.48, 0.5)
+	addon("Elya", N("u", 5000, 5000, "h", 0, "?"), "WHISPER")
+	addon("Nyra", N("u", 5100, 5000, "h", 0, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "close ? merge")
+	addon("Elya", N("h", 5000, 6000, "h", 0, "Peacebloom"), "WHISPER")
+	W.now = W.now + 121
+	HB.RefreshNodePins()
+	eq(#HB.NodeMarkers(), 1, "? gone after 2 minutes")
+	eq(HB.NodeMarkers()[1].name, "Peacebloom", "the herb stays")
+	addon("Elya", N("u", 5000, 5000, "h", 130, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "a ? older than 2 minutes is refused")
+	HB.ClearNodeMarkers()
+	for i, ago in ipairs({ 40, 30, 20, 10 }) do
+		addon("Elya", N("u", 5000, 5000 + i * 300, "h", ago, "?"), "WHISPER")
+	end
+	eq(#HB.NodeMarkers(), 3, "at most 3")
+	for _, m in ipairs(HB.NodeMarkers()) do assert(GetServerTime() - m.t <= 30, "the newest stay") end
+end)
+
+test("the leader arriving within 25 yards clears a ?, not a named marker", function()
+	asLeader()
+	where(0.4, 0.5)
+	addon("Elya", N("u", 5090, 5000, "h", 0, "?"), "WHISPER")
+	addon("Elya", N("h", 5000, 5300, "h", 0, "Peacebloom"), "WHISPER")  -- far enough not to replace the ?
+	where(0.5, 0.5)            -- 27 yards from the ?
+	HB.RefreshNodePins()
+	eq(#HB.NodeMarkers(), 2, "27 yards: still there")
+	where(0.502, 0.5)          -- 21 yards
+	HB.RefreshNodePins()
+	eq(#HB.NodeMarkers(), 1, "arrived: ? gone")
+	eq(HB.NodeMarkers()[1].name, "Peacebloom", "the herb stays")
+	HB.SetOption("nodeShow", false)
+	addon("Elya", N("u", 5030, 5000, "h", 0, "?"), "WHISPER")
+	HB.RefreshNodePins()
+	eq(#HB.NodeMarkers(), 1, "also while markers are hidden")
 end)

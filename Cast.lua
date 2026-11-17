@@ -15,8 +15,8 @@
 --   Assist, inactive: []                      (your own target, as a plain cast)
 --   Help, active:     [mod:shift,@player][@<leader>,help,nodead][]
 --   Help, inactive:   [mod:shift,@player][]
--- No mouseover anywhere (owner decision). Active means: this toon is a follower in a
--- party of only the accepted team, the leader is in it, and the player turned it on
+-- No mouseover anywhere (owner decision). Active means: this toon is a follower in
+-- the accepted team, in a party (not a raid), the leader is in it, and the player turned it on
 -- (/hb cast on, saved). Someone outside the team in the party changes nothing (owner
 -- decision): the leader is found by name among the party.
 --

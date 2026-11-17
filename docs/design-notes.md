@@ -246,6 +246,12 @@ real cursor is over it. This is the author's report, not Blizzard guidance.
   sighting nearby replaces it, a `?` near a named marker is dropped, a gather
   removes it and blocks older `?` reports there. `nodeUnknownShow` hides them.
   Older leaders refuse kind `u` (bad format) until updated.
+  Limits after the owner saw it fill the minimap (any icon with a secret name
+  counts; it cannot be narrowed to nodes): one `?` per follower per 15 s (latched
+  only once queued), `u` merge radius 4x the node radius, 2 minute life, at most
+  3 kept (newest), and the leader's own position within 25 yards removes a `?`
+  (in the same refresh and map read as the pins, also while hidden). Named
+  markers keep their radius and expiry.
 - **world:** the same tooltip with the world under the mouse (nil focus or
   `WorldFrame`) reports the player's own position with source `w`, each name at
   most every 30 s. The leader's pin says "near here: where <toon> stood"; an exact

@@ -16,6 +16,9 @@
 local HB = HaploBox
 
 local MERGE = 0.003      -- map units: reports this close together are the same node
+-- "?" markers (owner limits after seeing them in the game): wider merge, short life,
+-- at most a few, gone when the leader gets there, and one per follower per 15 s
+local U_MERGE, U_EXPIRY, U_MAX, U_ARRIVE, U_COOLDOWN = MERGE * 4, 120, 3, 25, 15
 local MAX_MARKERS, MAX_TOMBS, MAX_QUEUE, MAX_NAMES = 100, 100, 10, 200
 local FUTURE_SKEW = 60   -- seconds a report's time may lie ahead of ours
 local DEDUPE = 60        -- seconds before the same observation is sent again
@@ -153,7 +156,10 @@ HB.NodeMapToOffset = mapToOffset
 local queue, recent = {}, {}
 local draining = false
 
-local function near(a, b) return a.map == b.map and (a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 <= MERGE * MERGE end
+local function near(a, b, r)
+	r = r or MERGE
+	return a.map == b.map and (a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 <= r * r
+end
 
 -- Whether this toon may send a report to the leader now. Checked again at send time.
 local function shareTarget()
@@ -306,6 +312,7 @@ local function worldHover(names, label)
 end
 
 local unknownHover
+local lastUnknown
 -- The cursor's offset from the minimap centre, when it is on the visible round
 -- minimap; nil and a debug reason otherwise.
 local function minimapOffset(fromMinimap, label)
@@ -337,9 +344,13 @@ unknownHover = function(fromMinimap)
 	local sx, sy = minimapOffset(false, label)
 	if not sx then return end
 	if not shareTarget() then why("not sharing now (setting, group or leader)", label) return end
+	if lastUnknown and now() - lastUnknown < U_COOLDOWN then why("another ? within 15 seconds", label) return end
 	local mapID, x, y = offsetToMap(sx, sy)
 	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here", label) return end
-	if report("h", "?", "u", mapID, x, y) then HB.debug("node: unknown minimap icon reported") end
+	if report("h", "?", "u", mapID, x, y) then
+		lastUnknown = now()  -- only once a report was queued
+		HB.debug("node: unknown minimap icon reported")
+	end
 end
 
 local function onTooltip()
@@ -477,7 +488,10 @@ local refresh
 
 local function prune()
 	local t, limit = now(), expirySeconds()
-	for i = #markers, 1, -1 do if t - markers[i].t > limit then table.remove(markers, i) end end
+	for i = #markers, 1, -1 do
+		local m = markers[i]
+		if t - m.t > (m.kind == "u" and math.min(limit, U_EXPIRY) or limit) then table.remove(markers, i) end
+	end
 	for i = #tombs, 1, -1 do if t - tombs[i].t > limit then table.remove(tombs, i) end end
 	table.sort(markers, function(p, q) return p.t > q.t end)
 	while #markers > MAX_MARKERS do table.remove(markers) end
@@ -498,7 +512,7 @@ function HB.OnNodeReport(sender, msg)
 	mapID, x, y, t = tonumber(mapID), tonumber(x), tonumber(y), tonumber(t)
 	if mapID < 1 or mapID > 100000 or x > 10000 or y > 10000 then drop("bad map or position") return end
 	local age = now() - t
-	if age > expirySeconds() or age < -FUTURE_SKEW then
+	if age > (kind == "u" and math.min(expirySeconds(), U_EXPIRY) or expirySeconds()) or age < -FUTURE_SKEW then
 		drop("too old or in the future (age " .. age .. " s)")
 		return
 	end
@@ -506,7 +520,9 @@ function HB.OnNodeReport(sender, msg)
 	if src == "g" then
 		for i = #markers, 1, -1 do
 			local m = markers[i]
-			if (m.name == name or m.kind == "u") and near(m, obs) and m.t <= t then table.remove(markers, i) end
+			if ((m.name == name and near(m, obs)) or (m.kind == "u" and near(m, obs, U_MERGE))) and m.t <= t then
+				table.remove(markers, i)
+			end
 		end
 		local merged = false
 		for _, tb in ipairs(tombs) do
@@ -516,11 +532,11 @@ function HB.OnNodeReport(sender, msg)
 		HB.debug("node: " .. name .. " gathered by " .. sender)
 	elseif kind == "u" then
 		for _, tb in ipairs(tombs) do
-			if near(tb, obs) and tb.t >= t then drop("? was gathered after this sighting") return end
+			if near(tb, obs, U_MERGE) and tb.t >= t then drop("? was gathered after this sighting") return end
 		end
 		local merged = false
 		for _, m in ipairs(markers) do
-			if near(m, obs) then
+			if near(m, obs, U_MERGE) then
 				if m.kind ~= "u" then HB.debug("node: ? from " .. sender .. ": " .. m.name .. " is known there") return end
 				if t > m.t then m.t, m.by = t, sender end
 				merged = true
@@ -528,6 +544,15 @@ function HB.OnNodeReport(sender, msg)
 		end
 		if not merged then markers[#markers + 1] = obs end
 		prune()
+		-- at most a few "?" at once: the newest stay (prune sorted newest first)
+		local count = 0
+		for i = 1, #markers do
+			if markers[i] and markers[i].kind == "u" then count = count + 1 end
+		end
+		for i = #markers, 1, -1 do
+			if count <= U_MAX then break end
+			if markers[i].kind == "u" then table.remove(markers, i) count = count - 1 end
+		end
 		HB.debug("node: ? from " .. sender .. (merged and " merged" or " stored") .. " (" .. #markers .. " markers)")
 		refresh()
 		return
@@ -540,7 +565,7 @@ function HB.OnNodeReport(sender, msg)
 		end
 		-- an accepted named sighting replaces an unknown one there
 		for i = #markers, 1, -1 do
-			if markers[i].kind == "u" and near(markers[i], obs) then table.remove(markers, i) end
+			if markers[i].kind == "u" and near(markers[i], obs, U_MERGE) then table.remove(markers, i) end
 		end
 		local merged = false
 		for _, m in ipairs(markers) do
@@ -613,8 +638,18 @@ local elapsed = 0
 function refresh()
 	prune()
 	local used = 0
-	local snap = HB.db.nodeShow and HB.IAmLeader() and Minimap and #markers > 0 and snapshot()
+	local snap = HB.IAmLeader() and Minimap and #markers > 0 and snapshot()
 	if snap then
+		-- the leader went to look: a "?" within 25 yards is gone (also while hidden)
+		for i = #markers, 1, -1 do
+			local m = markers[i]
+			if m.kind == "u" and m.map == snap.map then
+				local dx, dy = (m.x - snap.px) * snap.w, (m.y - snap.py) * snap.h
+				if dx * dx + dy * dy <= U_ARRIVE * U_ARRIVE then table.remove(markers, i) end
+			end
+		end
+	end
+	if snap and HB.db.nodeShow then
 		local radius = snap.radius
 		for _, m in ipairs(markers) do
 			if shown(m) then
