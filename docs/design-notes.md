@@ -12,6 +12,18 @@ reports. Nobody has tested them in the game.
 
 ## #2: Team frame rows driven by SecureGroupHeaderTemplate
 
+### Fix (2026-11-17): names in the header's list
+
+The header matches its name list exactly, case and realm included, against
+`UnitName` plus `-realm` when the game gives a realm. A team list typed as
+`haplina` lost that member's row in the game while HaploBox still counted the
+member as present, so no AWAY row showed either. Each member in the party is now
+listed by the game's own spelling (`HB.HeaderName`, also used by `Cast.lua`).
+
+- **Limit:** a member who is away when the list is set is still listed by the
+  stored spelling. If that spelling differs from the game's and the member joins
+  in combat, its row comes only when combat ends.
+
 ### Problem
 
 Rows are `SecureUnitButtonTemplate` buttons bound to unit tokens (`party1` and so

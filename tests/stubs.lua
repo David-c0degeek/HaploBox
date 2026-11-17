@@ -75,7 +75,17 @@ local function unitName(u)
 end
 function UnitExists(u) return unitName(u) ~= nil end
 function GetUnitName(u) return unitName(u) end
-function UnitName(u) return unitName(u) end
+-- like the game: the name and, for another realm, the realm apart
+function UnitName(u)
+	local n = unitName(u)
+	if not n then return nil end
+	-- WoW Forever: "Name Surname" comes back as two values, the surname second
+	local first, surname = n:match("^(%S+) (.+)$")
+	if first then return first, surname end
+	local base, realm = n:match("^(.-)%-(.+)$")
+	if base and realm ~= W.realm then return base, realm end
+	return base or n, nil
+end
 function UnitIsPlayer() return true end
 function UnitIsUnit(a, b) return unitName(a) == unitName(b) end
 function UnitInParty() return true end
@@ -277,7 +287,10 @@ local function headerUnits(h)
 	local out = {}
 	for _, n in ipairs(order) do
 		for _, u in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
-			if UnitName(u) == n and not (u == "player" and h.attrs.showPlayer == false) and (u == "player" or IsInGroup() or h.attrs.showSolo) then out[#out + 1] = u end
+			-- the game's key: UnitName plus "-realm" when it has one, compared exactly
+			local name, server = UnitName(u)
+			if name and server and server ~= "" then name = name .. "-" .. server end
+			if name == n and not (u == "player" and h.attrs.showPlayer == false) and (u == "player" or IsInGroup() or h.attrs.showSolo) then out[#out + 1] = u end
 		end
 	end
 	return out

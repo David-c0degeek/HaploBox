@@ -157,3 +157,36 @@ test("without the template the direct rows are used", function()
 	eq(HaploBoxHeader, nil, "no header")
 	assert(HaploBoxPartyRow1.shown, "direct rows")
 end)
+
+test("team names spelt differently from the game still get their secure rows", function()
+	W.header = true
+	party("Elya", "Nyra-Other")
+	login({}, { leader = "haplo-forever", order = { "haplo-forever", "elya", "nyra-other" }, roles = {} })
+	eq(HaploBoxHeader.attrs.nameList, "Haplo,Elya,Nyra-Other", "the game's own spelling")
+	local k = shownKids()
+	eq(#k, 3, "a row for each member in the party")
+	eq(k[2].attrs.unit, "party1", "elya -> Elya")
+	eq(k[3].attrs.unit, "party2", "nyra-other -> Nyra-Other")
+	eq(HaploBoxAwayRow1 == nil or HaploBoxAwayRow1.shown == false, true, "no away rows")
+end)
+
+test("a two-toon party of a bigger team: two secure rows, the rest away", function()
+	W.header = true
+	W.me = "Elya"
+	party("Nyra")
+	login({ teamFrame = "show" }, { leader = "Haplo", order = { "Haplo", "Elya", "Nyra", "Vex", "Mora" }, roles = {} })
+	eq(#shownKids(), 2, "Elya and Nyra")
+	eq(HaploBoxAwayRow3 and HaploBoxAwayRow3.name, "Mora", "three away")
+end)
+
+test("WoW Forever names with a surname get their secure rows", function()
+	-- the team list holds "Name Surname" (GetUnitName); the header builds its key from
+	-- UnitName's two values joined with "-", as the upstream header code does
+	W.header = true
+	W.me = "Haplina Willow"
+	party("Haplina Purr")
+	login({ teamFrame = "show" }, { leader = "Haplina Willow", order = { "Haplina Willow", "Haplina Purr", "Haplina Vex" }, roles = {} })
+	eq(HaploBoxHeader.attrs.nameList, "Haplina-Willow,Haplina-Purr,Haplina Vex", "present members in the header's own form")
+	eq(#shownKids(), 2, "both toons in the party have rows")
+	eq(HaploBoxAwayRow1.name, "Haplina Vex", "the absent one is away")
+end)

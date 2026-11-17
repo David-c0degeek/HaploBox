@@ -147,6 +147,27 @@ function HB.Norm(name)
 	return name
 end
 
+-- The exact name a secure group header matches for that toon: UnitName plus
+-- "-realm" when the game gives a realm. For a toon in my party the game's own
+-- spelling is used, so capitals or a realm written differently in the team list do
+-- not lose its row; for anyone else, the stored name without my own realm.
+function HB.HeaderName(n)
+	local key = HB.Norm(n)
+	if not key then return n end
+	for _, u in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
+		if UnitExists(u) and HB.Norm(HB.UnitIdent(u)) == key then
+			local ok, name, server = pcall(UnitName, u)
+			if ok and type(name) == "string" and not HB.secret(name) and name ~= "" then
+				if type(server) == "string" and not HB.secret(server) and server ~= "" then return name .. "-" .. server end
+				return name
+			end
+		end
+	end
+	local base = n:match("^(.-)%-.+$")
+	if base and HB.Norm(n) == HB.Norm(base) then return base end
+	return n
+end
+
 function HB.UnitIdent(unit)
 	local ok, full = pcall(GetUnitName, unit, true)
 	full = ok and str(full) or nil

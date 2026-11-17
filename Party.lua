@@ -1017,11 +1017,7 @@ local function createHeader()
 end
 
 -- The name the header compares: short on this realm, Name-Realm elsewhere.
-local function headerName(n)
-	local base = n:match("^(.-)%-.+$")
-	if base and HB.Norm(n) == HB.Norm(base) then return base end
-	return n
-end
+local function headerName(n) return HB.HeaderName(n) end
 
 local function teamOnly(names)
 	local out = {}
