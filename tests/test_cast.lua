@@ -231,3 +231,63 @@ test("a stored leader outside the team order arms nothing, also with someone els
 	eq(assist("Frostbolt"), "Frostbolt@", "never Mallory's target")
 	eq(help("Renew"), "Renew@", "never Mallory")
 end)
+
+local function autoSelf(on) GetCVarBool = function(n) if n == "autoSelfCast" then return on end end end
+
+test("Auto Self Cast on: help falls back to a friendly target, else yourself", function()
+	autoSelf(true)
+	setup()
+	on()
+	W.dead = { Haplo = true }   -- the leader cannot be helped
+	eq(help("Renew"), "Renew@player", "nothing targeted: yourself")
+	W.units.target = "Villager"
+	eq(help("Renew"), "Renew@target", "a friendly target")
+	W.hostile = { target = true }
+	eq(help("Renew"), "Renew@player", "an enemy targeted: yourself, as the game does")
+	W.dead.Haplo = nil
+	eq(help("Renew"), "Renew@Haplo", "the leader still comes first")
+	W.shift = true
+	eq(help("Renew"), "Renew@player", "Shift still yourself")
+	GetCVarBool = nil
+end)
+
+test("Auto Self Cast off: unchanged; solo follows the setting too", function()
+	autoSelf(false)
+	setup()
+	on()
+	W.dead = { Haplo = true }
+	eq(help("Renew"), "Renew@", "the normal target")
+	autoSelf(true)
+	W.units = {}
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(help("Renew"), "Renew@player", "solo with auto self-cast: yourself")
+	eq(assist("Frostbolt"), "Frostbolt@", "damage untouched")
+	GetCVarBool = nil
+end)
+
+test("changing the setting updates the button; in combat after combat; other settings do nothing", function()
+	autoSelf(false)
+	setup()
+	on()
+	W.dead = { Haplo = true }
+	autoSelf(true)
+	fire("CVAR_UPDATE", "AUTOSELFCAST")
+	eq(help("Renew"), "Renew@player", "at once out of combat")
+	W.combat = true
+	autoSelf(false)
+	fire("CVAR_UPDATE", "cameraDistanceMaxZoomFactor")
+	eq(HB.CastPending(), false, "an unrelated setting sets nothing pending")
+	fire("CVAR_UPDATE", "autoSelfCast")
+	eq(HB.CastPending(), true, "pending in combat")
+	eq(help("Renew"), "Renew@player", "the old prefix until combat ends")
+	W.combat = false
+	fire("PLAYER_REGEN_ENABLED")
+	advance(1)
+	eq(help("Renew"), "Renew@", "the new one after")
+	GetCVarBool = nil
+	GetCVar = function(n) if n == "autoSelfCast" then return "1" end end
+	HB.UpdateCastButtons()
+	eq(help("Renew"), "Renew@player", "GetCVar works as a fallback")
+	GetCVar = nil
+end)

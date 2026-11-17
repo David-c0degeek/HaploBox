@@ -13,8 +13,12 @@
 -- type "macro" button: a macro started from inside the player's macro is ignored.
 --   Assist, active:   [@<leader's party token>target,harm,nodead]
 --   Assist, inactive: []                      (your own target, as a plain cast)
---   Help, active:     [mod:shift,@player][@<leader>,help,nodead][]
---   Help, inactive:   [mod:shift,@player][]
+--   Help, active:     [mod:shift,@player][@<leader>,help,nodead]<last>
+--   Help, inactive:   [mod:shift,@player]<last>
+-- <last> follows the game's Auto Self Cast (autoSelfCast): on, a living friendly
+-- target, else yourself ([@target,help,nodead][@player]); off, [] (the normal
+-- target, as a plain cast). A button cast with no unit gets no auto self-cast from
+-- the game, so HaploBox writes it out.
 -- No mouseover anywhere (owner decision). Active means: this toon is a follower in
 -- the accepted team, in a party (not a raid), the leader is in it, and the player turned it on
 -- (/hb cast on, saved). Someone outside the team in the party changes nothing (owner
@@ -136,6 +140,19 @@ local function partyToken(name)
 	end
 end
 
+-- The game's Auto Self Cast setting; off when it cannot be read.
+local function autoSelfCast()
+	if GetCVarBool then
+		local ok, v = pcall(GetCVarBool, "autoSelfCast")
+		if ok and v ~= nil then return v and true or false end
+	end
+	if GetCVar then
+		local ok, v = pcall(GetCVar, "autoSelfCast")
+		if ok and type(v) == "string" then return v == "1" end
+	end
+	return false
+end
+
 -- The leader's name and token when assisted casting applies, else nil and why.
 local function context()
 	if not IsInGroup() then return nil, nil, "solo" end
@@ -211,8 +228,9 @@ function HB.UpdateCastButtons()
 	assistBtn:SetAttribute("hb-prefix", assist)
 	assistBtn:SetAttribute("hb-armed", armed)
 	assistBtn:SetAttribute("type", nil)
-	helpBtn:SetAttribute("hb-prefix", active and ("[mod:shift,@player][@" .. leader .. ",help,nodead][]")
-		or "[mod:shift,@player][]")
+	local last = autoSelfCast() and "[@target,help,nodead][@player]" or "[]"
+	helpBtn:SetAttribute("hb-prefix", active and ("[mod:shift,@player][@" .. leader .. ",help,nodead]" .. last)
+		or ("[mod:shift,@player]" .. last))
 	helpBtn:SetAttribute("type", nil)
 	showState()
 end
@@ -249,7 +267,13 @@ function HB.CastCommand(rest)
 end
 
 local ev = CreateFrame("Frame")
-ev:SetScript("OnEvent", function(_, event)
+ev:SetScript("OnEvent", function(_, event, name)
+	if event == "CVAR_UPDATE" then
+		-- only the self-cast setting matters; other settings never touch the buttons
+		if type(name) ~= "string" or name:lower() ~= "autoselfcast" then return end
+		HB.UpdateCastButtons()
+		return
+	end
 	if event == "PLAYER_LOGIN" then
 		C_Timer.After(3, HB.UpdateCastButtons)
 	else
@@ -257,6 +281,6 @@ ev:SetScript("OnEvent", function(_, event)
 		C_Timer.After(0.2, HB.UpdateCastButtons)
 	end
 end)
-for _, e in ipairs({ "PLAYER_LOGIN", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_ENABLED", "UNIT_NAME_UPDATE", "PARTY_LEADER_CHANGED" }) do
+for _, e in ipairs({ "PLAYER_LOGIN", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_ENABLED", "UNIT_NAME_UPDATE", "PARTY_LEADER_CHANGED", "CVAR_UPDATE" }) do
 	pcall(ev.RegisterEvent, ev, e)
 end

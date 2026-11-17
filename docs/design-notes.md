@@ -307,7 +307,9 @@ This replaces the `/assist` candidate below, which stays for the record.
 - **Damage:** `/cast [@<leader token>target,harm,nodead] <spell>`. Without a living
   enemy target on the leader nothing is cast, and the player's target never
   changes, so a failed assist cannot hit an old, unrelated enemy.
-- **Help:** `[mod:shift,@player][@<leader name>,help,nodead][]`; no mouseover
+- **Help:** `[mod:shift,@player][@<leader name>,help,nodead][]` (the last `[]` becomes
+  `[@target,help,nodead][@player]` while the game's `autoSelfCast` is on: a button
+  cast with no unit gets no auto self-cast, found in the game); no mouseover
   (owner decision). The leader is named, so a moving party token cannot redirect it.
 - **Secure disarm in combat:** a party token can move in combat, so armed damage
   buttons are emptied by secure code on any group change:
