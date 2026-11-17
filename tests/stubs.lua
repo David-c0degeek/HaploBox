@@ -128,7 +128,9 @@ local SPELLS = { [139] = "Renew", [774] = "Rejuvenation", [8936] = "Regrowth", [
 -- combat log: W.clog holds the current event's values
 function UnitGUID(u) local n = unitName(u) return n and ("Player-" .. n) or nil end
 function CombatLogGetCurrentEventInfo() return unpack(W.clog or {}) end
-C_Spell = { GetSpellName = function(id) return SPELLS[id] end }
+-- spell descriptions as the client gives them: W.spellDesc[id]
+C_Spell = { GetSpellName = function(id) return SPELLS[id] end,
+	GetSpellDescription = function(id) return W.spellDesc and W.spellDesc[id] or "" end }
 WOW_PROJECT_CLASSIC, WOW_PROJECT_MAINLINE = 2, 1
 WOW_PROJECT_ID = 2
 function UnitInRange() return true, true end
@@ -414,6 +416,13 @@ function hoverMinimap(text, px, py, owner, viaSetText)
 		for _, fn in ipairs((GameTooltip.hooks or {}).OnShow or {}) do fn(GameTooltip) end
 	end
 end
+-- every event some frame registered since the addon loaded
+function registeredEvents()
+	local t = {}
+	for e, frames in pairs(events) do if next(frames) then t[#t + 1] = e end end
+	return t
+end
+
 function fire(e, ...)
 	if e == "GROUP_ROSTER_UPDATE" or e == "UNIT_NAME_UPDATE" then
 		evalStates()

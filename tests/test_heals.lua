@@ -10,17 +10,16 @@ local function cast(spellID, target, castMs)
 	return guid
 end
 
-local function land(guid, spellID, amount, crit, name)
+local function land(guid, spellID)
 	W.casts = {}
 	fire("UNIT_SPELLCAST_SUCCEEDED", "player", guid, spellID)
 	fire("UNIT_SPELLCAST_STOP", "player", guid, spellID)
-	W.clog = { 0, "SPELL_HEAL", false, UnitGUID("player"), W.me, 0, 0, "Player-X", "X", 0, 0, 0,
-		name or "Heal", 2, amount, 0, 0, crit or false }
-	fire("COMBAT_LOG_EVENT_UNFILTERED")
 end
 
+-- the client knows this rank's description, with a range around the given size
 local function learn(spellID, amount)
-	land(cast(spellID, "Nyra"), spellID, amount)
+	W.spellDesc = W.spellDesc or {}
+	W.spellDesc[spellID] = "Heal your target for " .. (amount - 10) .. " to " .. (amount + 10) .. "."
 end
 
 local function asElya(...)
@@ -42,28 +41,40 @@ test("a learned heal is announced to the team when the cast starts, and stopped 
 	local s = starts("PARTY")
 	eq(#s, 1, "start sent")
 	assert(s[1].msg:find("^I|%d+|Haplo|800|2500$"), s[1].msg)
-	land(g, 6064, 810)
+	land(g, 6064)
 	advance(0.1)
 	eq(#stops("PARTY"), 1, "stop sent")
 end)
 
-test("sizes are per rank, without crits, as a moving average", function()
+test("sizes come from each rank's description: the first range, else a single amount", function()
+	eq(HB.HealSizeFromText("Heal your target for 135 to 158."), 146.5, "range midpoint")
+	eq(HB.HealSizeFromText("Heals for 1,200 to 1,400."), 1300, "grouped digits")
+	eq(HB.HealSizeFromText("Heals for 1,200."), 1200, "single grouped amount, not 1")
+	eq(HB.HealSizeFromText("Heals a friendly target for 93 to 108 and another 98 over 21 sec."), 100.5, "Regrowth: the direct heal")
+	eq(HB.HealSizeFromText("Soigne la cible de 135 à 158."), nil, "another language: nothing")
 	asElya("Haplo", "Nyra")
-	learn(6064, 1000)
-	learn(2054, 300)
-	land(cast(6064, "Nyra"), 6064, 2000, true)  -- a crit does not count
-	eq(HB.db.healSizes[6064], 1000, "rank 4")
-	eq(HB.db.healSizes[2054], 300, "rank 1")
-	learn(6064, 2000)
-	eq(HB.db.healSizes[6064], 1300, "moving average")
+	W.spellDesc = { [6064] = "Heal your target for 712 to 813.", [2054] = "Heal your target for 295 to 341." }
+	W.sent = {}
+	cast(6064, "Haplo")
+	cast(2054, "Nyra")
+	advance(0.1)
+	local s = starts("PARTY")
+	eq(#s, 2, "both")
+	assert(s[1].msg:find("|Haplo|763|"), s[1].msg)
+	assert(s[2].msg:find("|Nyra|318|"), s[2].msg)
 end)
 
-test("a heal not cast before, an unsupported spell, or an unclear target announces nothing", function()
+test("no description yet, an unsupported spell, or an unclear target announces nothing", function()
 	asElya("Haplo", "Nyra")
-	cast(6064, "Haplo")  -- not learned yet
+	cast(6064, "Haplo")  -- description not loaded yet
 	learn(596, 500)      -- Prayer of Healing: not supported
 	cast(596, "Haplo")
-	learn(6064, 800)
+	advance(1)
+	eq(#starts(), 0, "nothing yet")
+	learn(6064, 800)     -- loaded now: the next cast is announced
+	cast(6064, "Haplo")
+	advance(0.1)
+	eq(#starts(), 1, "after loading")
 	W.sent = {}
 	cast(6064, "")          -- no target name
 	cast(6064, "Mallory")   -- not in the group
@@ -73,22 +84,21 @@ end)
 
 test("two members with the same short name: unknown", function()
 	asElya("Haplo-Alpha", "Haplo-Beta")
-	learn(6064, 800)  -- learning target Nyra is not in this group: learn on myself
-	land(cast(6064, "Elya"), 6064, 800)
+	learn(6064, 800)
 	W.sent = {}
 	cast(6064, "Haplo")
 	advance(1)
 	eq(#starts(), 0, "ambiguous")
 	eq(HB.TeamIncoming("Haplo-Alpha") + HB.TeamIncoming("Haplo-Beta"), 0, "no local prediction either")
 	asElya("Haplo-Forever", "Haplo-Other")  -- same realm and another: still two fit "Haplo"
-	land(cast(6064, "Elya"), 6064, 800)
+	learn(6064, 800)
 	cast(6064, "Haplo")
 	eq(HB.TeamIncoming("Haplo"), 0, "same-realm name with a namesake: unknown")
 end)
 
 test("with an outsider in the group the leader alone hears it; in a raid nobody", function()
 	asElya("Haplo", "Mallory")
-	land(cast(6064, "Elya"), 6064, 800)
+	learn(6064, 800)
 	W.sent = {}
 	cast(6064, "Haplo")
 	advance(0.1)
@@ -97,7 +107,7 @@ test("with an outsider in the group the leader alone hears it; in a raid nobody"
 	eq(#w, 1, "whisper")
 	eq(w[1].target, "Haplo", "to the leader")
 	asElya("Haplo", "Nyra")
-	land(cast(6064, "Elya"), 6064, 800)
+	learn(6064, 800)
 	W.raid = true
 	W.sent = {}
 	cast(6064, "Haplo")
@@ -157,7 +167,7 @@ test("pushback announces the new end; an outsider target gets nothing", function
 	eq(#s, 2, "start and update")
 	assert(s[2].msg:find("|2500$"), s[2].msg)
 	asElya("Haplo", "Mallory")
-	land(cast(6064, "Elya"), 6064, 800)
+	learn(6064, 800)
 	W.sent = {}
 	cast(6064, "Mallory")
 	advance(1)
@@ -174,22 +184,21 @@ test("a start held up in the send queue is dropped", function()
 	eq(#starts(), 0, "too late")
 end)
 
-test("secret combat log values and bad saved sizes are never used", function()
+test("secret, failing or odd descriptions are never used; the combat log is never registered", function()
 	asElya("Haplo", "Nyra")
-	W.secrets = { [777] = true }
-	learn(6064, 777)
-	eq(HB.db.healSizes[6064], nil, "secret amount not learned")
-	HB.db.healSizes[6064] = 0 / 0
-	HB.db.healSizes[2054] = "800"
-	HB.db.healSizes.x = 5
+	W.spellDesc = { [6064] = "Heal your target for 712 to 813." }
+	W.secrets = { ["Heal your target for 712 to 813."] = true }
+	C_Spell.GetSpellDescription = function(id) if id == 2054 then error("not loaded") end return W.spellDesc[id] or "" end
+	W.spellDesc[2061] = "Heal your target for 0 to 0."
 	W.sent = {}
 	cast(6064, "Haplo")
 	cast(2054, "Haplo")
+	cast(2061, "Haplo")
 	advance(1)
 	eq(#starts(), 0, "nothing announced")
-	eq(HB.db.healSizes[6064], nil, "NaN dropped")
-	eq(HB.db.healSizes[2054], nil, "string dropped")
-	eq(HB.db.healSizes.x, nil, "bad key dropped")
+	for _, e in ipairs(registeredEvents()) do
+		assert(e ~= "COMBAT_LOG_EVENT_UNFILTERED", "combat log registered")
+	end
 end)
 
 -- ---------------------------------------------------------------- receiving

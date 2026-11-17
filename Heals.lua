@@ -4,9 +4,11 @@
 -- A healer running HaploBox announces its own cast-time single-target heals:
 --   I|<id>|<target>|<amount>|<ms left>   when the cast starts
 --   I|<id>|-                             when it stops, fails, is interrupted or lands
--- The amount is an estimate: the average size of this spell (this rank) the healer
--- saw land before, crits left out. A heal the healer has not cast yet is not
--- announced. Group heals, instant heals and heal-over-time ticks are not covered.
+-- The amount is an estimate: the base size from the spell's own description for
+-- the rank being cast ("for 135 to 158" -> 147), without bonus healing or talents.
+-- WoW Forever forbids addons the combat log, so landed heals cannot be measured.
+-- Only English descriptions are read; another format announces nothing.
+-- Group heals, instant heals and heal-over-time ticks are not covered.
 -- Routes follow the stats rule: the group channel while the group is only the team;
 -- with anyone else in it, a whisper to the leader alone; nothing in a raid or solo.
 -- The client's own UnitGetIncomingHeals always wins where it exists.
@@ -25,7 +27,7 @@ local function spellName(id)
 	elseif GetSpellInfo then n = (GetSpellInfo(id)) end
 	if type(n) == "string" and not secret(n) then return n end
 end
--- a learned size usable in arithmetic: a plain finite positive number
+-- a size usable in arithmetic: a plain finite positive number
 local function goodSize(v)
 	return type(v) == "number" and not secret(v) and v == v and v > 0 and v < 1000000
 end
@@ -41,14 +43,34 @@ local function isSupported(id)
 	return n and supported[n] and n or nil
 end
 
-local MAX_SIZES, MAX_OPEN = 100, 4
-local function sizes()
-	if type(HB.db.healSizes) ~= "table" then HB.db.healSizes = {} end
-	local t = HB.db.healSizes
-	for k, v in pairs(t) do
-		if type(k) ~= "number" or not (type(v) == "number" and v == v and v > 0 and v < 1000000) then t[k] = nil end
-	end
-	return t
+local MAX_OPEN = 4
+
+-- "1,200" -> 1200
+local function number(s) return s and tonumber((s:gsub(",", ""))) end
+
+-- The base size of one rank from its description: the first "X to Y" range (the
+-- direct heal; Regrowth's heal-over-time total comes later), else the first
+-- "for X". nil while the description is not loaded or not readable.
+local sizeCache = {}
+local function parseSize(text)
+	local lo, hi = text:match("(%d[%d,]*) to (%d[%d,]*)")
+	lo, hi = number(lo), number(hi)
+	if lo and hi then return (lo + hi) / 2 end
+	return number(text:match("for (%d[%d,]*)"))
+end
+HB.HealSizeFromText = parseSize
+local function sizeOf(spellID)
+	if not plain(spellID) then return nil end
+	if sizeCache[spellID] then return sizeCache[spellID] end
+	local get = (C_Spell and C_Spell.GetSpellDescription) or GetSpellDescription
+	if type(get) ~= "function" then return nil end
+	local ok, text = pcall(get, spellID)
+	if not ok or type(text) ~= "string" or secret(text) or text == "" then return nil end
+	local size = parseSize(text)
+	if not goodSize(size) then return nil end
+	size = math.floor(size + 0.5)
+	sizeCache[spellID] = size
+	return size
 end
 
 -- ---------------------------------------------------------------- incoming (all toons)
@@ -142,7 +164,6 @@ HB.RevalidateIncomingHeals = revalidate
 -- ---------------------------------------------------------------- my casts (healer)
 local nextId = 0
 local casts = {}     -- castGUID -> { id, target, spellID, routes = {}, started }
-local landed = nil   -- { spellID, name, at }: the cast that just succeeded, for learning
 
 -- the unit in my party with that name: full name-realm, or a bare name that fits one
 local function resolve(name)
@@ -203,7 +224,7 @@ end
 local function startCast(guid, again)
 	local c = casts[guid]
 	if not c or (c.started and not again) then return end
-	local amount = sizes()[c.spellID]
+	local amount = sizeOf(c.spellID)
 	local _, _, _, _, endMS = UnitCastingInfo("player")
 	if not goodSize(amount) or type(endMS) ~= "number" or secret(endMS) then return end
 	local ms = math.max(0, math.min(10000, math.floor(endMS - GetTime() * 1000)))
@@ -234,36 +255,8 @@ local function onCast(event, unit, a, b, c)
 		startCast(a)
 	elseif event == "UNIT_SPELLCAST_DELAYED" then  -- pushback: announce the new end
 		startCast(a, true)
-	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-		local guid, spellID = a, b
-		local name = isSupported(spellID)
-		if name then landed = { spellID = spellID, name = name, at = GetTime() } end
-		stopCast(guid)
-	else  -- STOP, FAILED, FAILED_QUIET, INTERRUPTED
+	else  -- SUCCEEDED, STOP, FAILED, FAILED_QUIET, INTERRUPTED
 		stopCast(a)
-	end
-end
-
--- learning: the heal that lands right after my own supported cast succeeded
-local function onCombatLog()
-	if not (landed and CombatLogGetCurrentEventInfo and UnitGUID) then return end
-	local _, sub, _, source, _, _, _, _, _, _, _, _, spellName_, _, amount, _, _, crit = CombatLogGetCurrentEventInfo()
-	if not (plain(sub) and plain(source) and plain(spellName_)) or (crit ~= nil and secret(crit)) then return end
-	if sub ~= "SPELL_HEAL" or source ~= UnitGUID("player") or spellName_ ~= landed.name then return end
-	if not goodSize(amount) then landed = nil return end
-	if GetTime() - landed.at > 1 then landed = nil return end
-	local id = landed.spellID
-	landed = nil
-	if crit or type(amount) ~= "number" or amount <= 0 then return end
-	local t = sizes()
-	if not goodSize(t[id]) then t[id] = nil end
-	if not t[id] then
-		local n = 0
-		for _ in pairs(t) do n = n + 1 end
-		if n >= MAX_SIZES then return end
-		t[id] = amount
-	else
-		t[id] = math.floor(t[id] * 0.7 + amount * 0.3 + 0.5)
 	end
 end
 
@@ -274,11 +267,11 @@ end
 
 local ev = CreateFrame("Frame")
 ev:SetScript("OnEvent", function(_, event, ...)
-	if event == "COMBAT_LOG_EVENT_UNFILTERED" then onCombatLog() return end
 	if event == "GROUP_ROSTER_UPDATE" or event == "UNIT_NAME_UPDATE" then revalidate() return end
 	onCast(event, ...)
 end)
 for _, e in ipairs({ "UNIT_SPELLCAST_SENT", "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_DELAYED", "UNIT_SPELLCAST_SUCCEEDED", "UNIT_SPELLCAST_STOP",
-	"UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_FAILED_QUIET", "UNIT_SPELLCAST_INTERRUPTED", "COMBAT_LOG_EVENT_UNFILTERED", "GROUP_ROSTER_UPDATE", "UNIT_NAME_UPDATE" }) do
+	"UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_FAILED_QUIET", "UNIT_SPELLCAST_INTERRUPTED", "GROUP_ROSTER_UPDATE", "UNIT_NAME_UPDATE" }) do
+	-- never COMBAT_LOG_EVENT_UNFILTERED: WoW Forever forbids it to addons
 	pcall(ev.RegisterEvent, ev, e)
 end
