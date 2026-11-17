@@ -205,13 +205,43 @@ local function stripEscapes(s)
 	return (s:gsub("|T.-|t", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
--- debug lines for minimap hovers that were dropped, each at most every 5 seconds
+-- debug lines for minimap hovers that were dropped: each reason at most every 5
+-- seconds (the details after it do not count as a new reason)
 local lastWhy = {}
 local noMouseOverSaid = false
-local function why(text)
-	if lastWhy[text] and GetTime() - lastWhy[text] < 5 then return end
-	lastWhy[text] = GetTime()
-	HB.debug("minimap hover: " .. text)
+local function why(reason, detail)
+	if lastWhy[reason] and GetTime() - lastWhy[reason] < 5 then return end
+	lastWhy[reason] = GetTime()
+	HB.debug("minimap hover: " .. reason .. (detail or ""))
+end
+
+-- WoW Forever puts a marker before each name ("▾ Silverleaf"); only these markers
+-- and spaces are removed, so learned names keep every letter
+local MARKERS = { "\226\150\190", "\226\150\188", "\226\150\184", "\226\150\186", "\226\128\162", "\194\183" }
+local function cleanName(part)
+	local n = part:match("^%s*(.-)%s*$")
+	local again = true
+	while again do
+		again = false
+		for _, m in ipairs(MARKERS) do
+			if n:sub(1, #m) == m then
+				n = n:sub(#m + 1):match("^%s*(.-)$")
+				again = true
+			end
+		end
+	end
+	return n
+end
+HB.NodeCleanName = cleanName
+
+local function knownNames(line)
+	local names = {}
+	for part in stripEscapes(line):gmatch("[^\n]+") do
+		local n = cleanName(part)
+		local k = kindOf(n)
+		if k then names[#names + 1] = { n, k } end
+	end
+	return names
 end
 
 local function onTooltip()
@@ -220,47 +250,50 @@ local function onTooltip()
 	-- upstream clients own the tooltip by the minimap; WoW Forever anchors it to
 	-- UIParent, so that only counts while the cursor is really on the minimap
 	local fromMinimap = owner == Minimap
+	if not fromMinimap and owner ~= nil and owner ~= UIParent then return end
+	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
+	if type(line) ~= "string" or HB.secret(line) then return end
+	local names = knownNames(line)
+	if #names == 0 then
+		-- a UIParent tooltip without a node name is any other tooltip: say nothing
+		if fromMinimap then why("no known herb or ore in ", "\"" .. stripEscapes(line):sub(1, 40) .. "\"") end
+		return
+	end
+	local label = " (" .. names[1][1] .. ")"
 	if not fromMinimap then
-		if owner ~= nil and owner ~= UIParent then return end
 		-- the client's own mouse-over test where it has one (WoW Forever's minimap has
 		-- no IsMouseOver); a call that fails falls through to the circle check below
-		local over
+		local over, which
 		if type(Minimap.IsMouseOver) == "function" then
 			local ok, v = pcall(Minimap.IsMouseOver, Minimap)
-			if ok then over = v end
+			if ok then over, which = v, "Minimap:IsMouseOver" end
 		end
 		if over == nil and type(MouseIsOver) == "function" then
 			local ok, v = pcall(MouseIsOver, Minimap)
-			if ok then over = v end
+			if ok then over, which = v, "MouseIsOver" end
 		end
-		if over ~= nil and not over then return end
+		if over ~= nil and not over then why("the cursor is not on the minimap", " (" .. which .. ")" .. label) return end
 		if over == nil and not noMouseOverSaid then
 			noMouseOverSaid = true
 			HB.debug("minimap hover: no mouse-over test on this client, the minimap circle decides")
 		end
 	end
-	if not GetCursorPosition then return end
+	if not GetCursorPosition then why("no cursor position", label) return end
 	local cx, cy = GetCursorPosition()
 	local scale = Minimap:GetEffectiveScale()
 	local mx, my = Minimap:GetCenter()
-	if not (cx and mx and scale and scale > 0) then return end
+	if not (cx and mx and scale and scale > 0) then why("no cursor or minimap position", label) return end
 	local sx, sy = cx / scale - mx, cy / scale - my
 	if not fromMinimap then
 		local r = (Minimap:GetWidth() or 0) / 2
-		if sx * sx + sy * sy > r * r then return end  -- a corner of the frame, outside the round map
+		if sx * sx + sy * sy > r * r then  -- a corner of the frame, outside the round map
+			why("the cursor is outside the minimap circle", string.format(" (dx %d, dy %d, radius %d)", sx, sy, r) .. label)
+			return
+		end
 	end
-	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
-	if type(line) ~= "string" or HB.secret(line) then return end
-	if not shareTarget() then why("not sharing now (setting, group or leader)") return end
-	local names = {}
-	for part in stripEscapes(line):gmatch("[^\n]+") do
-		local n = part:match("^%s*(.-)%s*$")
-		local k = kindOf(n)
-		if k then names[#names + 1] = { n, k } end
-	end
-	if #names == 0 then why("no known herb or ore in \"" .. stripEscapes(line):sub(1, 40) .. "\"") return end
+	if not shareTarget() then why("not sharing now (setting, group or leader)", label) return end
 	local mapID, x, y = offsetToMap(sx, sy)
-	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here") return end
+	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here", label) return end
 	for _, e in ipairs(names) do report("h", e[1], e[2], mapID, x, y) end
 end
 

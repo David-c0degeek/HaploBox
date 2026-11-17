@@ -91,14 +91,38 @@ end)
 
 test("debug says why a minimap hover was dropped, without spam", function()
 	asFollower({ debug = true })
-	hoverMinimap("Hogger", 30, 0, "UIParent")
-	hoverMinimap("Hogger", 30, 0, "UIParent")
+	hoverMinimap("Hogger", 30, 0, "UIParent")       -- any other tooltip: silent
+	eq(printedMatching("minimap hover"), 0, "nothing for unrelated UIParent tooltips")
+	hoverMinimap("Hogger", 30, 0)                   -- owned by the minimap: say so
+	hoverMinimap("Hogger", 30, 0)
 	eq(printedMatching("no known herb or ore"), 1, "once")
 	W.map = nil
 	hoverMinimap("Earthroot", 30, 0, "UIParent")
-	eq(printedMatching("no map position"), 1, "no position")
-	hoverMinimap("Earthroot", 200, 0, "UIParent")  -- not on the minimap: not a minimap hover
-	eq(printedMatching("minimap hover"), 2, "nothing for unrelated tooltips")
+	eq(printedMatching("no map position here %(Earthroot%)"), 1, "no position, named")
+	hoverMinimap("Earthroot", 65, 65, "UIParent")    -- the frame's corner: outside the circle
+	hoverMinimap("Earthroot", 66, 64, "UIParent")
+	eq(printedMatching("outside the minimap circle %(dx 65, dy 65, radius 70%)"), 1, "outside, with offsets, once")
+	Minimap.IsMouseOver = function() return false end
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	eq(printedMatching("not on the minimap %(Minimap:IsMouseOver%)"), 1, "the client's test said no")
+end)
+
+test("WoW Forever's marker before a node name is removed; learned names keep every letter", function()
+	asFollower()
+	hoverMinimap("\226\150\190 Silverleaf", 30, 0, "UIParent")
+	hoverMinimap("\226\128\162 Copper Vein", 0, 30, "UIParent")
+	advance(3)
+	eq(#reports(), 2, "both reported")
+	assert(reports()[1].msg:find("|Silverleaf$"), reports()[1].msg)
+	assert(reports()[2].msg:find("|Copper Vein$"), reports()[2].msg)
+	local accented = "\195\137lune"  -- learned, starts with a non-ASCII letter
+	HB.db.nodeNames = HB.db.nodeNames or {}
+	HB.db.nodeNames[accented] = "h"
+	hoverMinimap("\226\150\190 " .. accented, 0, -30, "UIParent")
+	advance(2)
+	eq(#reports(), 3, "reported")
+	assert(reports()[3].msg:find("|" .. accented .. "$"), "name kept whole")
+	eq(HB.NodeCleanName("x Silverleaf"), "x Silverleaf", "other prefixes stay")
 end)
 
 test("a rotating minimap is turned back to north", function()
