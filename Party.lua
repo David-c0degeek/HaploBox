@@ -284,7 +284,7 @@ local function sizeRow(r)
 	r.buffMax = math.max(1, math.floor((W - 120) / BUFF_STEP))
 	r.moneyText:SetShown(not small and HB.db.teamShowGold and true or false)
 	r.bagIcon:SetShown(not small and HB.db.teamShowBags and true or false)
-	r.bagText:SetShown(not small and HB.db.teamShowBags and true or false)
+	r.bagText:SetShown(not small and (HB.db.teamShowBags or HB.db.teamShowAmmo) and true or false)
 	r.box:ClearAllPoints()
 	r.box:SetPoint("TOPLEFT", r, "TOPLEFT", W + GAP, 0)
 	r.box:SetSize(BOX_W, FH)
@@ -543,6 +543,14 @@ local function bagColor(free)
 	return "|cffdddddd"
 end
 
+local AMMO_ICON = "|TInterface\\Icons\\INV_Ammo_Arrow_02:11:11:0:0:64:64:5:59:5:59|t"
+local function ammoColor(n)
+	if n == 0 then return "|cffff5544" end
+	if n <= (tonumber(HB.db.ammoLow) or 200) then return "|cffffaa33" end
+	return "|cffdddddd"
+end
+
+local updateBuffs
 local function updateStats(r)
 	if r.stale then return end
 	local s = HB.stats and HB.stats[HB.Norm(r.name)]
@@ -559,12 +567,21 @@ local function updateStats(r)
 		r.rested:SetAlpha(0)  -- max level or unknown: keep the space, hide the bar
 		r.xpText:SetText("")
 	end
-	if s and s.free then
-		r.bagText:SetText(bagColor(s.free) .. s.free .. "|r")
+	-- ammo after the bag count, only for a toon that reports some (a bow, gun or crossbow)
+	local ammo = HB.db.teamShowAmmo and s and s.ammo
+	local ammoText = ammo and (AMMO_ICON .. ammoColor(ammo) .. ammo .. "|r") or ""
+	if not HB.db.teamShowBags then
+		r.bagText:SetText(ammoText)  -- the text is shown for the ammo alone; the bag icon is hidden
+	elseif s and s.free then
+		r.bagText:SetText(bagColor(s.free) .. s.free .. "|r" .. (ammo and "  " or "") .. ammoText)
 		r.bagIcon:SetAlpha(1)
 	else
-		r.bagText:SetText("|cff777777-|r")
+		r.bagText:SetText("|cff777777-|r" .. (ammo and "  " or "") .. ammoText)
 		r.bagIcon:SetAlpha(0.35)
+	end
+	if (ammo and true or false) ~= (r.ammoShown or false) then
+		r.ammoShown = ammo and true or false
+		updateBuffs(r)  -- the ammo count takes room from the buffs
 	end
 	r.moneyText:SetText(s and s.copper and HB.FormatMoney(s.copper, true) or "|cff777777-|r")
 end
@@ -650,7 +667,7 @@ local function updateBuffTimers(r)
 	end
 end
 
-local function updateBuffs(r)
+function updateBuffs(r)
 	if r.stale then return end
 	local show = HB.db.teamShowBuffs and not mini() and r.unit and UnitExists(r.unit)
 	local list = {}
@@ -660,6 +677,7 @@ local function updateBuffs(r)
 		list = res
 	end
 	local max = r.buffMax or 5
+	if r.ammoShown then max = math.max(1, max - 2) end
 	local n = #list
 	local shown = n > max and (max - 1) or n
 	local width = shown * BUFF_STEP - 2 + (n > shown and 20 or 0)

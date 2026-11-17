@@ -31,6 +31,7 @@ Each row is one character:
 - **Power bar** in the right colour for mana, rage or energy.
 - **XP bar** in purple with the percentage on it, and rested XP as a blue extension. Hidden at max level.
 - **Free bag slots** (bottom left). Amber at 5 or fewer, red when the bags are full.
+- **Ammo left** (after the bag slots), only for a character with a bow, gun or crossbow: the count of the ammo in its ammo slot, all stacks in the bags included. Amber at the low mark (200 unless you pick 100, 400 or 1000 in Settings > Follow & alerts), red at 0. Changes in ammo alone reach the leader at most every 5 seconds; running out shows at once. Not yet checked in the game.
 - **Buffs** (bottom middle) cast by your group, with the time left on each icon. Only buffs of a minute or longer, so procs, stances and food stay out. A buff with 2 minutes or less turns red. When there is no room, `+2` shows how many more there are.
 - **Gold** (bottom right), kept short: `128g`, `52g 13s`, `85s 20c`.
 - **Focus** (crosshair, top right): the target that character has on focus. A dash means no focus.
@@ -98,7 +99,7 @@ When a follower stops following, the leader gets a raid warning and a sound. Onl
 
 ![Raid warning on the leader's screen: Nyra stopped following!](docs/leader-alert.png)
 
-Followers also send their cast errors (out of range, no line of sight, out of mana, target not in front) to the leader's chat, so you know why the mage is not casting. And when a follower's bags fill up, the leader gets a message.
+Followers also send their cast errors (out of range, no line of sight, out of mana, target not in front) to the leader's chat, so you know why the mage is not casting. And when a follower's bags fill up, or its ammo runs low or out, the leader gets a message (once each; a refill re-arms it).
 
 ---
 
@@ -175,7 +176,7 @@ That's all. The leader alert, the team frame and the automation now know who is 
 | `/hb frame auto\|show\|hide` | Show the frame on this character: `auto` = only on the leader. |
 | `/hb frame lock\|unlock` | Lock it in place, or unlock it to move and resize. |
 | `/hb frame colors` | Turn class colours on or off. |
-| `/hb frame xp\|gold\|bags\|buffs` | Show or hide level and XP, gold, free bag slots, or buffs. |
+| `/hb frame xp\|gold\|bags\|ammo\|buffs` | Show or hide level and XP, gold, free bag slots, ammo, or buffs. |
 | `/hb frame scale 0.8` | Scale the whole frame (0.5 to 2). |
 | `/hb frame solo` | Also show the frame when you are not in a group. |
 | `/hb frame reset` | Put the frame back to its starting position and size. |
@@ -222,6 +223,7 @@ Every sound can be changed or switched off in the options panel or with `/hb sou
 | `inviteAccept` | An invite from the leader was accepted. |
 | `whisperIn` | Leader: a forwarded whisper came in. |
 | `bagsFull` | Leader: a character's bags are full (off by default). |
+| `ammoLow` | Leader: a character's ammo is low or out (off by default). |
 | `mountOn` / `mountOff` | Passenger mount on or off (off by default). |
 
 A sound value can be:
@@ -255,7 +257,7 @@ To check changes outside the game, run `python tests/run.py` (needs `pip install
 
 - **Communication:** every character talks over a hidden addon channel (`HaploBox`) in party or raid. Nothing appears in chat. Messages wait in a short queue so that a whole team logging in at once stays under the game's limit for addon messages.
 - **Trust:** a character takes a team only from the leader it already has, or after `/hb accept`. Invites, flights and reply relays come only from that leader, and follow, focus, stats and error reports count only from team members.
-- **Each character reports itself:** follow state, follow target, focus, level, XP, gold and bag space are sent when they change (stats at most once a second), and again when someone joins or logs in. The game only gives these numbers for your own character, so every character needs HaploBox, ideally the same version.
+- **Each character reports itself:** follow state, follow target, focus, level, XP, gold, bag space and ammo are sent when they change (stats at most once a second, ammo alone at most every 5 seconds), and again when someone joins or logs in. The game only gives these numbers for your own character, so every character needs HaploBox, ideally the same version.
 - **Whispers:** a follower forwards a whisper to the leader as a private addon whisper, not to the group. Long whispers are split into parts and joined again on the leader. If the game hides a whisper's text from addons, the leader still sees who whispered.
 - **Secret values:** newer clients can hide health values from addons. HaploBox only passes them to status bars and text, never to its own calculations, so it keeps working where other frames throw errors.
 - **Combat:** the rows are secure unit buttons. WoW does not allow them to be moved, resized or rebuilt in combat, so those changes wait until combat ends.

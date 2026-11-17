@@ -32,6 +32,8 @@ local SECTIONS = {
 		{ "teamShowXP", "toggle", "Level and XP bar" },
 		{ "teamShowGold", "toggle", "Gold per character and team total" },
 		{ "teamShowBags", "toggle", "Free bag slots per character and team total" },
+		{ "teamShowAmmo", "toggle", "Ammo left (characters with a bow, gun or crossbow)",
+			help = "Shown after the bag slots. Amber at the low mark, red when out." },
 		{ "teamShowBuffs", "toggle", "Group buffs with timers" },
 		{ "teamHealPrediction", "toggle", "Incoming heals on the health bars",
 			help = "From the game where it reports them, else from the team's own healers (estimates)." },
@@ -61,6 +63,10 @@ local SECTIONS = {
 			help = "Your own macros: /click HaploBoxAssist Frostbolt, /click HaploBoxHelp Flash_Heal (_ for spaces). Not yet checked in the game." },
 		{ "showRelayedErrors", "toggle", "Show followers' cast errors in chat", who = "leader" },
 		{ "bagFullAlert", "toggle", "Message when a character's bags are full", who = "leader" },
+		{ "ammoAlert", "toggle", "Message when a character's ammo runs low or out", who = "leader" },
+		{ "ammoLow", "cycle", "Ammo is low at", choices = { "100", "200", "400", "1000" },
+			text = { ["100"] = "100", ["200"] = "200", ["400"] = "400", ["1000"] = "1000" }, who = "leader",
+			help = "Shots left. The count reaches the leader within about 5 seconds." },
 		{ "testAlert", "action", "Test leader alert", run = function() SlashCmdList.HAPLOBOX("test alert") end },
 	} },
 	{ id = "nodes", title = "Gathering", items = {
@@ -104,6 +110,7 @@ local SECTIONS = {
 		{ "inviteAccept", "Invite accepted" },
 		{ "whisperIn", "Forwarded whisper", who = "leader" },
 		{ "bagsFull", "A character's bags are full", who = "leader" },
+		{ "ammoLow", "A character's ammo is low or out", who = "leader" },
 		{ "mountOn", "Passenger mount: on" },
 		{ "mountOff", "Passenger mount: off" },
 	} },
@@ -118,7 +125,7 @@ HB.SETTINGS = SECTIONS
 -- the quick settings popup: display settings of the team frame on this account
 local QUICK = {
 	"teamView", "teamFrame", "teamLocked", "partyScale", "teamClassColors", "teamShowXP", "teamShowGold", "teamShowBags",
-	"teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule", "teamShowHots",
+	"teamShowAmmo", "teamShowBuffs", "teamHealPrediction", "teamCastBars", "teamManaRule", "teamShowHots",
 	"teamBuffOverview", "teamDebuffOverview",
 }
 

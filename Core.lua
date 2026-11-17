@@ -33,6 +33,7 @@ local DEFAULTS = {
 		mountOff     = false,
 		whisperIn    = "TELL_MESSAGE",
 		bagsFull     = false,
+		ammoLow      = false,
 	},
 	alertOnFollowStart  = false,  -- leader also gets a (green) message when a follower starts following
 	autoAcceptInvite    = true,   -- followers accept invites from the leader
@@ -55,6 +56,7 @@ local DEFAULTS = {
 	teamShowXP          = true,   -- team frame: level and XP bar
 	teamShowGold        = true,   -- team frame: gold per toon and the team total
 	teamShowBags        = true,   -- team frame: free bag slots per toon and the team total
+	teamShowAmmo        = true,   -- team frame: ammo left, for toons with a bow, gun or crossbow
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars (the client's, else the team's own)
 	castAssist          = false,  -- HaploBoxAssist/HaploBoxHelp cast for the leader (opt-in, saved)
@@ -73,6 +75,8 @@ local DEFAULTS = {
 	autoPartyRole       = true,   -- set my party and group finder role from my team role
 	hideQuestTracker    = true,   -- hide Blizzard's quest tracker (objective tracker)
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
+	ammoAlert           = true,   -- leader: message when a toon's ammo runs low or out
+	ammoLow             = "200",  -- leader: "low" at this many shots or fewer
 	forwardWhispers     = true,   -- followers: forward whispers from outside the team to the leader
 	relayReplies        = true,   -- followers: pass the leader's replies on to the last whisperer
 	nodeShare           = true,   -- followers: send gathering nodes I hover or gather to the leader (#5)
@@ -884,10 +888,12 @@ function handlers.PLAYER_FOCUS_CHANGED()
 end
 
 -- Level, XP, money and bag space of every team member. The game only gives these
--- for your own character, so each toon sends S|level|xp|xpMax|rested|copper|free|slots
--- when one of them changes (at most once a second) and when asked with F|?.
+-- for your own character, so each toon sends S|level|xp|xpMax|rested|copper|free|slots|ammo
+-- when one of them changes (at most once a second; ammo alone at most every 5 seconds)
+-- and when asked with F|?. ammo is empty when unknown or not used; older builds send
+-- seven fields and ignore the eighth.
 HB.stats = {}
-local STAT_FIELDS = { "lvl", "xp", "xpMax", "rest", "copper", "free", "slots" }
+local STAT_FIELDS = { "lvl", "xp", "xpMax", "rest", "copper", "free", "slots", "ammo" }
 local function num(v)
 	if v == nil or secret(v) then return nil end
 	return tonumber(v)
@@ -911,6 +917,37 @@ local function bagSpace()
 	return free, total
 end
 
+-- Ammo left: the count of the item in the ammo slot (the game counts every stack of
+-- it in the bags). Nothing there: 0 when the ranged weapon takes ammo (bow, gun,
+-- crossbow), else nil. nil also when the client or the item data cannot tell.
+local AMMO_WEAPONS = { [2] = true, [3] = true, [18] = true }  -- weapon subclasses
+local function slotId(name)
+	if not GetInventorySlotInfo then return nil end
+	local ok, id = pcall(GetInventorySlotInfo, name)
+	return ok and num(id) or nil
+end
+local function itemId(slot)
+	if not slot or not GetInventoryItemID then return nil end
+	local ok, id = pcall(GetInventoryItemID, "player", slot)
+	return ok and num(id) or nil
+end
+local function ammoCount()
+	local slot = slotId("AmmoSlot")
+	if not slot or not GetInventoryItemCount then return nil end
+	if itemId(slot) then
+		local ok, n = pcall(GetInventoryItemCount, "player", slot)
+		return ok and num(n) or nil
+	end
+	local ranged = itemId(slotId("RangedSlot"))
+	if not ranged then return nil end
+	local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+	if not info then return nil end
+	local ok, _, _, _, _, _, classId, subId = pcall(info, ranged)
+	classId, subId = ok and num(classId), ok and num(subId)
+	if classId ~= 2 or not subId then return nil end
+	return AMMO_WEAPONS[subId] and 0 or nil
+end
+
 local function atMaxLevel(lvl)
 	if IsXPUserDisabled and IsXPUserDisabled() then return true end
 	if IsPlayerAtEffectiveMaxLevel then
@@ -931,6 +968,7 @@ local function myStats()
 	end
 	s.copper = num(GetMoney and GetMoney())
 	s.free, s.slots = bagSpace()
+	s.ammo = ammoCount()
 	return s
 end
 
@@ -949,6 +987,17 @@ local function setStats(name, s)
 		and old and (old.free or 0) > 0 then
 		print_("|cffff4444" .. shortName(name) .. ": bags are full|r")
 		HB.PlaySound("bagsFull")
+	end
+	-- ammo: once on going low and once on running out; going back up re-arms
+	local low = tonumber(HB.db.ammoLow) or 200
+	if HB.db.ammoAlert and HB.IAmLeader() and s.ammo and old and old.ammo then
+		if s.ammo == 0 and old.ammo > 0 then
+			print_("|cffff4444" .. shortName(name) .. ": out of ammo|r")
+			HB.PlaySound("ammoLow")
+		elseif s.ammo > 0 and s.ammo <= low and old.ammo > low then
+			print_("|cffffaa33" .. shortName(name) .. ": ammo low (" .. s.ammo .. ")|r")
+			HB.PlaySound("ammoLow")
+		end
 	end
 	if HB.OnStatsChanged then HB.OnStatsChanged(k) end
 end
@@ -993,19 +1042,44 @@ local function sendStats()
 			and not HB.IAmLeader()
 	end)
 end
+-- Every shot changes the ammo count, so a change in ammo alone goes out at most every
+-- 5 seconds (the last count always follows); running out goes at once.
+local AMMO_EVERY = 5
+local lastStatsAt, ammoWait = nil, false
+local function withoutAmmo(msg) return msg and msg:match("^(.*)|[^|]*$") end
+local function flushStats()
+	local msg = statsMsg(myStats())
+	if msg == lastStatsMsg then return end
+	local ammo = myStats().ammo
+	local wait = lastStatsAt and (lastStatsAt + AMMO_EVERY - GetTime()) or 0
+	if withoutAmmo(msg) == withoutAmmo(lastStatsMsg) and ammo ~= 0 and wait > 0 then
+		if not ammoWait then
+			ammoWait = true
+			C_Timer.After(wait, function() ammoWait = false flushStats() end)
+		end
+		return
+	end
+	lastStatsAt = GetTime()
+	sendStats()
+end
 local function updateMyStats()
 	setStats(HB.UnitIdent("player"), myStats())
 	if statsPending then return end
 	statsPending = true
 	C_Timer.After(1, function()
 		statsPending = false
-		if statsMsg(myStats()) ~= lastStatsMsg then sendStats() end
+		flushStats()
 	end)
 end
 for _, e in ipairs({ "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "UPDATE_EXHAUSTION", "PLAYER_MONEY",
-	"BAG_UPDATE", "BAG_UPDATE_DELAYED" }) do
+	"BAG_UPDATE", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED" }) do
 	handlers[e] = updateMyStats
 end
+function handlers.UNIT_INVENTORY_CHANGED(unit)
+	if unit == "player" then updateMyStats() end
+end
+-- item data that arrives late can tell whether the ranged weapon takes ammo
+handlers.GET_ITEM_INFO_RECEIVED = updateMyStats
 
 -- ---------------------------------------------------------------- whisper forwarding
 -- A follower forwards whispers from outside the team to the leader:
@@ -1549,7 +1623,7 @@ end
 --   F     toon -> group        F|S|<target>, F|X: follow changes;      team
 --                              F|? asks all; F|s|<target>, F|x answer
 --   T     toon -> group        T|<focus name> (empty: no focus)        team
---   S     toon -> group        S|lvl|xp|xpMax|rested|copper|free|slots team
+--   S     toon -> group        S|lvl|xp|xpMax|rested|copper|free|slots|ammo team
 --   E     follower -> group    E|<error code> (see ERRORS)             team
 --   P     leader -> group      P|<flight destination name>             leader
 --   D     leader -> group      D|release or D|resurrect                 leader
@@ -1789,13 +1863,14 @@ local CHOICES = {
 	teamFrame = { auto = true, show = true, hide = true },
 	autoShareQuests = { leader = true, all = true, off = true },
 	teamView = { main = true, mini = true },
+	ammoLow = { ["100"] = true, ["200"] = true, ["400"] = true, ["1000"] = true },
 	nodeExpiry = { ["5"] = true, ["10"] = true, ["20"] = true, ["30"] = true },
 }
 HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
 	teamFrame = true, partyFrameSolo = true, partyScale = true, teamLocked = true,
 	teamClassColors = true, teamShowXP = true, teamShowGold = true, teamShowBags = true, teamShowBuffs = true,
-	teamView = true, teamHeader = true, teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
+	teamShowAmmo = true, teamView = true, teamHeader = true, teamHealPrediction = true, teamCastBars = true, teamManaRule = true, teamShowHots = true,
 	teamHotNames = true, teamRequiredBuffs = true, teamBuffOverview = true, teamDebuffOverview = true,
 }
 HB.FRAME_KEYS = FRAME_KEYS
@@ -1871,14 +1946,14 @@ local function help()
 	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")
 	print_("  /hb ffa - set free-for-all loot (group leader only); HaploBox then leaves it alone")
 	print_("  /hb share - share every quest in your log with the group")
-	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept whisperIn bagsFull mountOn mountOff")
+	print_("  /hb sound <event> <value|off> - " .. "events: followOn followOff leaderAlert shareError inviteAccept whisperIn bagsFull ammoLow mountOn mountOff")
 	print_("  /hb test <event> - play a sound; /hb test alert - show the leader alert")
 	print_("  /hb frame auto|show|hide - team frame on this toon (auto: only when it is the leader)")
 	print_("  /hb frame lock | unlock - unlocked: drag the bar to move, drag the corner to resize")
 	print_("  /hb frame main | mini - the full view, or Mini Heal: big health tiles for small windows")
 	print_("  /hb frame share - leader: send this layout to the team; /hb frame undo - put yours back")
 	print_("  /hb frame colors | scale <0.5-2> | solo | reset - class colours, scale, show when solo, reset position and size")
-	print_("  /hb frame xp | gold | bags | buffs - show or hide level and XP, gold, free bag slots, buffs")
+	print_("  /hb frame xp | gold | bags | ammo | buffs - show or hide level and XP, gold, free bag slots, ammo, buffs")
 	print_("  /hb r <text> - leader: reply to the last forwarded whisper, through the toon that got it")
 	print_("  /hb tracker - hide or show Blizzard's quest tracker")
 	print_("  /hb who - show how the game names you and your target")
@@ -1972,8 +2047,9 @@ SlashCmdList.HAPLOBOX = function(input)
 		elseif a == "colors" or a == "colours" then
 			HB.SetOption("teamClassColors", not HB.db.teamClassColors)
 			print_("team frame class colours: " .. (HB.db.teamClassColors and "on" or "off") .. later)
-		elseif a == "xp" or a == "gold" or a == "bags" or a == "buffs" then
-			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags", buffs = "teamShowBuffs" })[a]
+		elseif a == "xp" or a == "gold" or a == "bags" or a == "ammo" or a == "buffs" then
+			local key = ({ xp = "teamShowXP", gold = "teamShowGold", bags = "teamShowBags", ammo = "teamShowAmmo",
+				buffs = "teamShowBuffs" })[a]
 			HB.SetOption(key, not HB.db[key])
 			print_("team frame " .. a .. ": " .. (HB.db[key] and "shown" or "hidden") .. later)
 		elseif a == "share" then
@@ -1984,7 +2060,7 @@ SlashCmdList.HAPLOBOX = function(input)
 			if HB.ResetPartyPosition then HB.ResetPartyPosition() end
 		else
 			print_("team frame on this toon: " .. tostring(HB.db.teamFrame) .. ", scale " .. tostring(HB.db.partyScale)
-				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|buffs|scale <n>|solo|reset")
+				.. ". Use /hb frame auto|show|hide|lock|unlock|colors|xp|gold|bags|ammo|buffs|scale <n>|solo|reset")
 		end
 	elseif cmd == "who" then
 		print_("you: " .. tostring(HB.UnitIdent("player")) .. "  target: " .. tostring(HB.UnitIdent("target"))
