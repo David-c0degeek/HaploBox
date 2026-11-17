@@ -252,6 +252,37 @@ local function knownNames(line)
 	return names
 end
 
+-- The frame under the mouse: "ok", frame (nil is a real answer: the world), or nil
+-- when this client cannot tell (no API, an error, or an odd answer).
+local function mouseFocus()
+	if type(GetMouseFoci) == "function" then
+		local ok, t = pcall(GetMouseFoci)
+		if ok and type(t) == "table" then return "ok", t[1] end
+	end
+	if type(GetMouseFocus) == "function" then
+		local ok, f = pcall(GetMouseFocus)
+		if ok and (f == nil or type(f) == "table") then return "ok", f end
+	end
+end
+
+-- the minimap itself, or a pin or button on it (up to five parents up)
+local function onMinimapFrame(f)
+	for _ = 1, 6 do
+		if f == nil then return false end
+		if f == Minimap then return true end
+		if type(f) ~= "table" or type(f.GetParent) ~= "function" then return false end
+		local ok, p = pcall(f.GetParent, f)
+		if not ok then return false end
+		f = p
+	end
+	return false
+end
+
+local function frameName(f)
+	local ok, n = pcall(f.GetName, f)
+	return ok and type(n) == "string" and n or "a frame"
+end
+
 local function onTooltip()
 	if not (GameTooltip and Minimap) then return end
 	local owner = GameTooltip:GetOwner()
@@ -274,6 +305,17 @@ local function onTooltip()
 		-- decides (the circle check below)
 		local ok, visible = pcall(Minimap.IsVisible, Minimap)
 		if not (ok and visible) then why("the minimap is hidden", label) return end
+		-- the frame under the mouse, where the client can tell: the minimap or a
+		-- pin on it, not the world (a herb hovered in the world shows the same tooltip)
+		local status, focus = mouseFocus()
+		if status and not onMinimapFrame(focus) then
+			if focus == nil or focus == WorldFrame then
+				why("the mouse is on the world, not the minimap", label)
+			else
+				why("the mouse is over another frame", " (" .. frameName(focus) .. ")" .. label)
+			end
+			return
+		end
 	end
 	if not GetCursorPosition then why("no cursor position", label) return end
 	local cx, cy = GetCursorPosition()
@@ -300,8 +342,25 @@ local function safeTooltip()
 	if not ok then why("error ", tostring(err):sub(1, 120)) end
 end
 
+-- WoW Forever changes the shown minimap tooltip's text without calling SetText or
+-- showing it again, so the shown tooltip is also read every 0.2 seconds; the same
+-- text and owner is looked at again after a second at most
+local lastRun, lastKey, lastKeyAt = 0, nil, 0
+local function onTooltipUpdate()
+	local t = GetTime()
+	if t - lastRun < 0.2 then return end
+	lastRun = t
+	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
+	if type(line) ~= "string" or HB.secret(line) then return end
+	local key = line .. "|" .. tostring(GameTooltip:GetOwner())
+	if key == lastKey and t - lastKeyAt < 1 then return end
+	lastKey, lastKeyAt = key, t
+	safeTooltip()
+end
+
 if GameTooltip then
 	pcall(GameTooltip.HookScript, GameTooltip, "OnShow", safeTooltip)
+	pcall(GameTooltip.HookScript, GameTooltip, "OnUpdate", onTooltipUpdate)
 	pcall(hooksecurefunc, GameTooltip, "SetText", safeTooltip)
 end
 

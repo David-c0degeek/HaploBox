@@ -253,6 +253,8 @@ local frameMethods = {
 	GetValue = function(self) return self.value end,
 	SetMinMaxValues = function(self, a, b) self.min, self.max = a, b end,
 	GetChecked = function(self) return self.checked end,
+	GetName = function(self) return self.frameName end,
+	GetParent = function(self) return self.parentFrame end,
 }
 local events = {}
 local newFrame
@@ -353,7 +355,9 @@ function CreateFrame(_, name, parent, template)
 		headers[#headers + 1] = h
 		return h
 	end
-	return newFrame(name)
+	local f = newFrame(name)
+	f.frameName, f.parentFrame = name, parent
+	return f
 end
 UIParent = newFrame()
 frameMethods.HookScript = function(self, k, fn)
@@ -369,6 +373,8 @@ frameMethods.AddLine = function(self, t) self.lines = self.lines or {} table.ins
 
 -- minimap and map position (#5): W.map = { id, x, y, w, h }, W.zoom, W.rotate, W.facing
 Minimap = newFrame("Minimap")
+WorldFrame = newFrame("WorldFrame")
+WorldFrame.frameName = "WorldFrame"
 Minimap.width, Minimap.height, Minimap.cx, Minimap.cy = 140, 140, 1000, 700
 Minimap.GetZoom = function() return W.zoom or 0 end
 GameTooltip = newFrame("GameTooltip")

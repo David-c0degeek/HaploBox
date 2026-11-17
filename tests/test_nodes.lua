@@ -385,3 +385,77 @@ test("with debug off the trace prints nothing", function()
 	advance(2)
 	eq(printedMatching("node:"), 0, "silent")
 end)
+
+-- the shown tooltip's text changes without OnShow or SetText (as on WoW Forever)
+local function nativeHover(text, px, py, seconds)
+	local s = W.minimapScale or 1
+	W.cursorX, W.cursorY = (Minimap.cx + px) * s, (Minimap.cy + py) * s
+	GameTooltip.owner = UIParent
+	GameTooltipTextLeft1.text = text
+	local runs = 0
+	for _ = 1, math.floor((seconds or 0.3) / 0.02) do
+		advance(0.02)
+		for _, fn in ipairs((GameTooltip.hooks or {}).OnUpdate or {}) do fn(GameTooltip, 0.02) runs = runs + 1 end
+	end
+	return runs
+end
+
+test("a minimap tooltip whose text changes natively is read while shown", function()
+	asFollower()
+	GetMouseFoci = function() return { Minimap } end
+	nativeHover("Peacebloom", 30, 0)
+	advance(2)
+	eq(#reports(), 1, "reported without OnShow or SetText")
+	assert(reports()[1].msg:find("|Peacebloom$"), reports()[1].msg)
+end)
+
+test("the frame under the mouse decides: the world and other frames do not count", function()
+	asFollower({ debug = true })
+	GetMouseFoci = function() return { WorldFrame } end
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	GetMouseFoci = function() return {} end   -- an answer: nothing under the mouse
+	hoverMinimap("Silverleaf", 30, 0, "UIParent")
+	local bag = CreateFrame("Frame", "ContainerFrame1")
+	GetMouseFoci = function() return { bag } end
+	hoverMinimap("Peacebloom", 30, 0, "UIParent")
+	advance(3)
+	eq(#reports(), 0, "nothing")
+	eq(printedMatching("the mouse is on the world, not the minimap %(Earthroot%)"), 1, "world said")
+	eq(printedMatching("over another frame %(ContainerFrame1%) %(Peacebloom%)"), 1, "other frame said")
+	local pin = CreateFrame("Frame", nil, Minimap)  -- a pin on the minimap counts
+	GetMouseFoci = function() return { pin } end
+	hoverMinimap("Peacebloom", 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 1, "pin on the minimap")
+end)
+
+test("a missing, failing or odd focus API falls back to the minimap circle", function()
+	asFollower()
+	GetMouseFoci = function() error("nope") end
+	GetMouseFocus = nil
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	GetMouseFoci = function() return "odd" end
+	GetMouseFocus = function() return Minimap end  -- the legacy API is used instead
+	hoverMinimap("Silverleaf", 0, 30, "UIParent")
+	GetMouseFoci, GetMouseFocus = nil, nil
+	hoverMinimap("Peacebloom", 0, -30, "UIParent")
+	hoverMinimap("Copper Vein", 200, 0, "UIParent")  -- outside the circle: still not
+	advance(4)
+	eq(#reports(), 3, "three inside the circle")
+end)
+
+test("the same tooltip becomes valid when the mouse moves onto the minimap; reading is throttled", function()
+	asFollower()
+	GetMouseFoci = function() return { WorldFrame } end
+	local runs = nativeHover("Earthroot", 30, 0, 2)
+	advance(1)
+	eq(#reports(), 0, "world: nothing")
+	GetMouseFoci = function() return { Minimap } end
+	nativeHover("Earthroot", 30, 0, 1.5)
+	advance(2)
+	eq(#reports(), 1, "on the minimap within a second or so")
+	assert(runs >= 90, "OnUpdate ran every frame")
+	nativeHover("Earthroot", 30, 0, 10)
+	advance(2)
+	eq(#reports(), 1, "no repeat report within a minute")
+end)
