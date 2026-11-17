@@ -14,4 +14,5 @@ Auras.lua
 Share.lua
 Quests.lua
 Lead.lua
+Cast.lua
 Options.lua

@@ -75,6 +75,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | Abandon quest on team | Leader abandons a quest, then confirms a popup | Followers abandon the same quest | Leader's Yes | Followers act only on their stored leader's message, only for a quest they have; follower setting turns it off | Owner-requested 2026-11-16 |
 | Take over as leader | A key press or /hb lead on the new leader | The leader name on every toon with the same team | That toon's own press | Sender must be a team member in the group with the same team; newest wins; roles and order unchanged | Leader name only |
 | Follow / assist keys | The player's key press | /follow or /assist by name | The player's own press | Set out of combat; nothing solo, in raids, in mixed groups or on the leader | Never pressed by HaploBox |
+| Assist-or-cast spells | The player's own key press | Cast at the leader's target, or a heal on the leader | The player's own press | Off after login and in solo, raid, mixed groups and on the leader; secure code disarms damage spells on any group change in combat; no macro edits | Not yet checked in the game |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 
 Not built and not approved by this review: leader handover by window switch

@@ -179,6 +179,35 @@ hand. HaploBox will not ship a spawn database shown as live nodes.
 
 ## #8: Spell macros that assist the leader in a team and cast normally solo
 
+### Built (offline, 2026-11-17): `Cast.lua`
+
+This replaces the `/assist` candidate below, which stays for the record.
+
+- **Buttons:** `HaploBoxCast1` to `HaploBoxCast12` hold spells in fixed slots. The
+  player's macro clicks one; HaploBox never edits macros.
+- **Damage:** `/cast [@<leader token>target,harm,nodead] <spell>`. Without a living
+  enemy target on the leader nothing is cast, and the player's target never
+  changes, so a failed assist cannot hit an old, unrelated enemy.
+- **Heals:** `[mod:shift,@player][@mouseover,help,nodead][@<leader name>,help,nodead]`.
+  The leader is named, so a moving party token cannot redirect the heal.
+- **Secure disarm in combat:** a party token can move in combat, so armed damage
+  buttons are emptied by secure code on any group change:
+  - a leader-only `SecureGroupHeaderTemplate` runs `refreshUnitChange` on every
+    roster or name update (source: `SecureGroupHeaders.lua` `configureChildren`,
+    live retail);
+  - `_onattributechanged` runs when the leader's row loses its unit;
+  - a state driver runs on any change away from a party.
+  HaploBox arms the buttons again only out of combat, after checking the group.
+- **Off switch:** off after every login, and off in solo, raid, mixed or
+  unconfirmed groups and on the leader.
+- **verify:** that the header, `refreshUnitChange`, `_onattributechanged` and the
+  state driver behave like this on Forever and Classic Era. Also verify
+  `@<token>target` and `@<name>` in macro conditionals, and that `/click` reaches
+  a hidden secure button there.
+- **Gap:** a leader change by handover in combat (#4) is not a group change, so it
+  does not disarm. Armed damage then follows the old leader's target, which is
+  another team member's, until combat ends.
+
 ### Mechanism
 
 - A secure button, `HaploBoxAssist`, is the only thing HaploBox changes. It is

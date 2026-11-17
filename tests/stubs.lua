@@ -218,9 +218,13 @@ local frameMethods = {
 		-- an unchanged value does not count on firing the handler (same unit token,
 		-- new person behind it): tests must not depend on it
 		if not same and self.scripts and self.scripts.OnAttributeChanged then self.scripts.OnAttributeChanged(self, k, v) end
+		if not same and k:sub(1, 1) ~= "_" and type(self.attrs._onattributechanged) == "string" then
+			runSnippet(self, "local self, name, value = ...\n" .. self.attrs._onattributechanged, k, v)
+		end
 		if self.isHeader then headerUpdate(self) end
 	end,
 	GetAttribute = function(self, k) return self.attrs and self.attrs[k] end,
+	GetFrameRef = function(self, k) return self.attrs and self.attrs["frameref-" .. k] end,
 	SetScript = function(self, k, fn) self.scripts = self.scripts or {} self.scripts[k] = fn end,
 	IsProtected = function() return false end,
 	SetChecked = function(self, v) self.checked = v and true or false end,
@@ -247,6 +251,16 @@ function newFrame(name)
 	if name then _G[name] = fr end
 	return fr
 end
+-- Restricted snippets run as plain Lua with the frame itself as "self".
+function runSnippet(frame, code, ...)
+	local fn = assert(loadstring(code))
+	fn(frame, ...)
+end
+function SecureHandlerSetFrameRef(f, k, other)
+	f.attrs = f.attrs or {}
+	f.attrs["frameref-" .. k] = other
+end
+
 -- A small SecureGroupHeaderTemplate: party only (the real one also treats a raid as a
 -- party when showParty is on, so only the visibility driver hides it there). It rebinds
 -- its children on every roster change, in combat too, and never runs addon layout.
@@ -258,7 +272,7 @@ local function headerUnits(h)
 	local out = {}
 	for _, n in ipairs(order) do
 		for _, u in ipairs({ "player", "party1", "party2", "party3", "party4" }) do
-			if UnitName(u) == n and (u == "player" or IsInGroup() or h.attrs.showSolo) then out[#out + 1] = u end
+			if UnitName(u) == n and not (u == "player" and h.attrs.showPlayer == false) and (u == "player" or IsInGroup() or h.attrs.showSolo) then out[#out + 1] = u end
 		end
 	end
 	return out
@@ -285,10 +299,31 @@ function headerUpdate(h)
 		else
 			c:SetAttribute("unit", u)
 			c.shown = true
+			if c.attrs and type(c.attrs.refreshUnitChange) == "string" then
+				runSnippet(c, "local self = ...\n" .. c.attrs.refreshUnitChange)
+			end
 		end
 	end
 end
-function RegisterStateDriver(f, _, cond) f.driver = cond headerUpdate(f) end
+-- visibility drivers on headers; other state drivers report party / raid / solo
+local stateFrames = {}
+local function groupState() return W.raid and "raid" or (IsInGroup() and "party" or "solo") end
+function evalStates()
+	for _, f in ipairs(stateFrames) do
+		local s = groupState()
+		if f.state ~= s then
+			f.state = s
+			local code = f.attrs and f.attrs["_onstate-" .. f.stateId]
+			if type(code) == "string" then runSnippet(f, "local self, stateid, newstate = ...\n" .. code, f.stateId, s) end
+		end
+	end
+end
+function RegisterStateDriver(f, id, cond)
+	if f.isHeader then f.driver = cond headerUpdate(f) return end
+	f.stateId = id
+	stateFrames[#stateFrames + 1] = f
+	evalStates()
+end
 function UnregisterStateDriver(f) f.driver = nil end
 function CreateFrame(_, name, parent, template)
 	if template == "SecureGroupHeaderTemplate" then
@@ -303,6 +338,7 @@ end
 UIParent = newFrame()
 function fire(e, ...)
 	if e == "GROUP_ROSTER_UPDATE" or e == "UNIT_NAME_UPDATE" then
+		evalStates()
 		for _, h in ipairs(headers) do headerUpdate(h) end  -- the game's header goes first
 	end
 	for fr in pairs(events[e] or {}) do

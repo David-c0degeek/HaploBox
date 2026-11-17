@@ -559,6 +559,7 @@ end
 
 local function refreshTeam()
 	if HB.UpdateRoleControls then C_Timer.After(0.2, HB.UpdateRoleControls) end
+	if HB.UpdateCastButtons then C_Timer.After(0.2, HB.UpdateCastButtons) end
 	if HB.ScheduleLootCheck then HB.ScheduleLootCheck(1) end
 	if HB.LayoutPartyFrame then HB.LayoutPartyFrame() end
 	if HB.OnFollowStateChanged then HB.OnFollowStateChanged() end
@@ -1759,6 +1760,7 @@ local function help()
 	print_("  /hb accept - accept the team offered by a new leader (or click Accept in the popup)")
 	print_("  /hb lead - take over as leader; the team keeps its order and roles")
 	print_("  /hb controls - what the Follow leader, Assist leader and Follow healer keys do now")
+	print_("  /hb cast add harm|help <spell>, list, remove <slot>, on, off - spells that cast at the leader's target (not yet checked in the game)")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
 	print_("  /hb role tank|healer|dps - your role (also in the options panel); sent to the group, sets your party role")
@@ -1792,6 +1794,8 @@ SlashCmdList.HAPLOBOX = function(input)
 		HB.TakeLead()
 	elseif cmd == "controls" then
 		HB.PrintRoleControls()
+	elseif cmd == "cast" then
+		HB.CastCommand(rest)
 	elseif cmd == "role" then
 		HB.SetMyRole(rest:lower())
 	elseif cmd == "team" then
