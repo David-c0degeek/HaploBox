@@ -10,7 +10,9 @@
 -- Only English descriptions are read; another format announces nothing.
 -- Group heals, instant heals and heal-over-time ticks are not covered.
 -- Routes follow the stats rule: the group channel while the group is only the team;
--- with anyone else in it, a whisper to the leader alone; nothing in a raid or solo.
+-- with someone outside the team in the party, a whisper to each team member (never
+-- the outsider); while the roster is not certain, the leader alone; nothing in a
+-- raid or solo.
 -- The client's own UnitGetIncomingHeals always wins where it exists.
 local HB = HaploBox
 
@@ -186,14 +188,27 @@ end
 
 local function myKey(id) return HB.Norm(HB.UnitIdent("player")) .. ":" .. id end
 
--- where announcements go now: "group", a leader's name, or nil
+-- where announcements go now: { "group" }, a list of team members' names, or nil.
+-- With someone outside the team in the party, each team member gets a whisper.
 local function route()
 	if not HB.db.teamSendHeals or not IsInGroup() or IsInRaid() then return nil end
 	local status = HB.GroupStatus()
-	if status == "team" then return "group" end
+	if status == "team" then return { "group" } end
+	if status == "mixed" then
+		if not HB.IsTeamName(HB.UnitIdent("player")) then return nil end
+		local list = HB.TeamMembersInGroup()
+		return #list > 0 and list or nil
+	end
 	if HB.IAmLeader() then return nil end
 	local leader = HB.Leader()
-	if leader and HB.InGroup(leader) then return leader end
+	if leader and HB.InGroup(leader) then return { leader } end
+end
+
+local function routeHas(to)
+	for _, x in ipairs(route() or {}) do
+		if x == to then return true end
+	end
+	return false
 end
 
 local function deliver(c, msg, to, check)
@@ -211,12 +226,34 @@ local function stopCast(guid)
 	casts[guid] = nil
 	c.stopped = true  -- a start still in the send queue is dropped
 	removeEntry(myKey(c.id))
-	-- every route that saw the start hears the stop, even if the group changed since
+	-- every route that saw the start hears the stop, even if the group changed since;
+	-- a group start is stopped by whisper to each team member once someone else is in
+	-- the party, so the outsider never gets heal messages
+	local stop = "I|" .. c.id .. "|-"
+	local told = {}
+	local function private(to) return HB.InGroup(to) and HB.IsTeamName(to) end
+	local function tell(to)
+		if told[to] or not private(to) then return end
+		told[to] = true
+		HB.Whisper(to, stop, nil, nil, function() return private(to) end)
+	end
+	local function tellTeam()
+		for _, name in ipairs(HB.TeamMembersInGroup()) do tell(name) end
+	end
+	local function teamOnly() return IsInGroup() and not IsInRaid() and HB.GroupStatus() == "team" end
 	for to in pairs(c.routes) do
 		if to == "group" then
-			if IsInGroup() then HB.SendGroupChecked("I|" .. c.id .. "|-") end
-		elseif HB.InGroup(to) then
-			HB.Whisper(to, "I|" .. c.id .. "|-")
+			if teamOnly() then
+				-- checked again when it goes out: if someone else joined meanwhile, the
+				-- team hears it by whisper instead
+				HB.SendGroupChecked(stop, nil, nil, teamOnly, function()
+					if not teamOnly() then tellTeam() end
+				end)
+			else
+				tellTeam()
+			end
+		else
+			tell(to)
 		end
 	end
 end
@@ -230,15 +267,17 @@ local function startCast(guid, again)
 	local ms = math.max(0, math.min(10000, math.floor(endMS - GetTime() * 1000)))
 	c.started = true
 	addEntry(c.target, myKey(c.id), amount, ms / 1000)
-	local to = route()
-	if not to then return end
+	local list = route()
+	if not list then return end
 	local msg = "I|" .. c.id .. "|" .. c.target .. "|" .. math.floor(amount) .. "|" .. ms
 	-- the time left is fixed in the message, so a copy held up in the send queue
 	-- for more than half a second is dropped rather than shown too long
 	local queued = GetTime()
-	deliver(c, msg, to, function()
-		return not c.stopped and route() == to and teamTarget(c.target) and GetTime() - queued <= 0.5
-	end)
+	for _, to in ipairs(list) do
+		deliver(c, msg, to, function()
+			return not c.stopped and routeHas(to) and teamTarget(c.target) and GetTime() - queued <= 0.5
+		end)
+	end
 end
 
 local function onCast(event, unit, a, b, c)

@@ -86,7 +86,8 @@ end
 
 -- The toon holding the game's party lead (the crown) passes it to a toon whose
 -- handover it just accepted, so loot and the crown match the HaploBox leader. Only
--- the crown holder acts, in a party of only the team, and only towards the one
+-- the crown holder acts, in a party of the team (someone else in it changes nothing),
+-- and only towards the one
 -- party member with that name. The client may refuse it (it can need a click): if
 -- the crown has not moved two seconds later, the old leader is asked to do it.
 local crownSeq = 0
@@ -94,7 +95,9 @@ local pendingCrown = nil  -- { seq, sender }: a handover accepted in combat
 
 local function crownToken(sender)
 	if not (UnitIsGroupLeader and UnitIsGroupLeader("player")) then return end
-	if IsInRaid() or HB.GroupStatus() ~= "team" then return end
+	if IsInRaid() then return end
+	local status = HB.GroupStatus()
+	if status ~= "team" and status ~= "mixed" then return end
 	local key, token = HB.Norm(sender), nil
 	for i = 1, 4 do
 		local u = "party" .. i
@@ -230,10 +233,12 @@ function HB.ResolveRoleControls()
 	if not IsInGroup() then return all("solo") end
 	if IsInRaid() then return all("in a raid") end
 	local status = HB.GroupStatus()
-	if status == "mixed" then return all("someone outside the team is in the group") end
-	if status ~= "team" then return all("group not confirmed yet") end
+	if status ~= "team" and status ~= "mixed" then return all("group not confirmed yet") end
+	-- someone outside the team changes nothing, but this toon itself must be in it
+	if not HB.IsTeamName(HB.UnitIdent("player")) then return all("this toon is not in the team") end
 	local leader = HB.Leader()
 	if not leader then return all("no leader set") end
+	if not HB.InTeamOrder(leader) then return all("the leader is not in the team") end
 	local meLeader = HB.IAmLeader()
 	if not meLeader and not HB.InGroup(leader) then return all("the leader is not in the group") end
 	local toLeader = meLeader and { reason = "you are the leader" } or { target = leader }
@@ -355,8 +360,8 @@ function HB.OnRoleControlsPending(on)
 end
 
 -- ---------------------------------------------------------------- Lead button
--- A small button on every team member that is not the leader, in a party of only
--- the team: clicking it takes over as leader (the same as /hb lead), also in
+-- A small button on every team member that is not the leader, in a party (someone
+-- outside the team in it changes nothing): clicking it takes over as leader (the same as /hb lead), also in
 -- combat. Mouse clicks reach the game even when a window tool keeps the F keys.
 -- Not secure: it only sends the handover; the followers' secure buttons follow
 -- once combat ends. Shift-drag moves it; Settings > Follow & alerts hides it.
@@ -374,7 +379,8 @@ end
 local function leadWanted()
 	if not HB.db.leadButton then return false end
 	if not IsInGroup() or IsInRaid() then return false end
-	if HB.GroupStatus() ~= "team" then return false end
+	local status = HB.GroupStatus()
+	if status ~= "team" and status ~= "mixed" then return false end
 	if not HB.IsTeamName(HB.UnitIdent("player")) then return false end
 	return not HB.IAmLeader()
 end

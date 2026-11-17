@@ -127,7 +127,7 @@ test("a start still queued when the cast stops is never sent", function()
 	eq(#stops(), 0, "no stop needed")
 end)
 
-test("the stop reaches whoever heard the start, even after the group changed", function()
+test("the stop reaches whoever heard the start, even after the group changed, never the outsider", function()
 	asElya("Haplo", "Nyra")
 	learn(6064, 800)
 	W.sent = {}
@@ -137,7 +137,42 @@ test("the stop reaches whoever heard the start, even after the group changed", f
 	W.units.party3 = "Mallory"  -- now mixed
 	fire("UNIT_SPELLCAST_FAILED", "player", g, 6064)
 	advance(0.1)
-	eq(#stops("PARTY"), 1, "stop to the party too")
+	eq(#stops("PARTY"), 0, "no stop on the party channel")
+	local s = stops("WHISPER")
+	eq(#s, 2, "a whisper to each team member")
+	for _, m in ipairs(s) do assert(m.target ~= "Mallory", "never the outsider") end
+end)
+
+test("with someone outside the team, heals go by whisper to each team member", function()
+	asElya("Haplo", "Nyra", "Mallory")
+	learn(6064, 800)
+	W.sent = {}
+	local g = cast(6064, "Haplo")
+	advance(0.1)
+	eq(#starts("PARTY"), 0, "not the party channel")
+	local s = starts("WHISPER")
+	eq(#s, 2, "Haplo and Nyra")
+	for _, m in ipairs(s) do assert(m.target == "Haplo" or m.target == "Nyra", m.target) end
+	fire("UNIT_SPELLCAST_SUCCEEDED", "player", g, 6064)
+	advance(0.1)
+	eq(#stops("WHISPER"), 2, "both hear the stop")
+	W.sent = {}
+	W.sendResults = { 3, 3, 3, 3 }  -- held back
+	g = cast(6064, "Haplo")
+	fire("UNIT_SPELLCAST_INTERRUPTED", "player", g, 6064)
+	advance(5)
+	eq(#starts(), 0, "a queued start stopped before it went never goes")
+end)
+
+test("a queued heal whisper is dropped for a member no longer in the team", function()
+	asElya("Haplo", "Nyra", "Mallory")
+	learn(6064, 800)
+	W.sent = {}
+	W.sendResults = { 3 }  -- the first copy waits
+	cast(6064, "Haplo")
+	HaploBoxTeam.order = { "Haplo", "Elya" }  -- Nyra is dropped from the team
+	advance(0.3)
+	for _, m in ipairs(starts("WHISPER")) do assert(m.target ~= "Nyra", "not to Nyra") end
 end)
 
 test("turning sending off stops open announcements at once", function()
@@ -274,4 +309,21 @@ test("the client's own API wins whenever it exists", function()
 	local r = rowOf("Nyra")
 	HB.UpdateHealPrediction(r)
 	eq(r.incoming.shown, false, "nil from the client: nothing, no fallback")
+end)
+
+test("a party stop still queued when someone else joins goes to each team member instead", function()
+	asElya("Haplo", "Nyra")
+	learn(6064, 800)
+	W.sent = {}
+	local g = cast(6064, "Haplo")
+	advance(0.1)
+	eq(#starts("PARTY"), 1, "start to the party")
+	W.sendResults = { 3, 3, 3 }  -- the stop waits in the queue
+	fire("UNIT_SPELLCAST_SUCCEEDED", "player", g, 6064)
+	W.units.party3 = "Mallory"
+	advance(5)
+	eq(#stops("PARTY"), 0, "never on the party channel once mixed")
+	local s = stops("WHISPER")
+	eq(#s, 2, "each team member by whisper")
+	for _, m in ipairs(s) do assert(m.target ~= "Mallory", "never the outsider") end
 end)

@@ -315,10 +315,11 @@ local function send(msg, key)
 	enqueue(msg, nil, key)
 end
 HB.SendGroup = send  -- for Quests.lua
--- To the group, with a check made when it actually goes out and a callback once sent.
-function HB.SendGroupChecked(msg, key, onOk, check)
+-- To the group, with a check made when it actually goes out, a callback once sent
+-- and one when the check failed or the send did not go out.
+function HB.SendGroupChecked(msg, key, onOk, check, onFail)
 	if not IsInGroup() then return end
-	enqueue(msg, nil, key, nil, onOk, check)
+	enqueue(msg, nil, key, onFail, onOk, check)
 end
 
 -- To one toon only, as an addon whisper. Never falls back to the group.
@@ -570,6 +571,28 @@ local function isTeamName(name)
 	return false  -- a stored role alone does not make someone part of the team
 end
 HB.IsTeamName = isTeamName
+
+-- true only for a name in the accepted team order (a stored leader name alone is not
+-- enough: with someone outside the team in the party, the leader must be one of us)
+function HB.InTeamOrder(name)
+	local k = HB.Norm(name)
+	if not k then return false end
+	for _, n in ipairs(HaploBoxTeam.order or {}) do if HB.Norm(n) == k then return true end end
+	return false
+end
+
+-- the other team members in my party (never raid members, never outsiders)
+local function teamMembersInGroup()
+	local out = {}
+	if not IsInGroup() or IsInRaid() then return out end
+	for i = 1, 4 do
+		local u = "party" .. i
+		local ident = UnitExists(u) and HB.UnitIdent(u)
+		if ident and isTeamName(ident) then out[#out + 1] = ident end
+	end
+	return out
+end
+HB.TeamMembersInGroup = teamMembersInGroup
 
 -- true when that name is one of the other members of my current group
 local function inGroup(name)
@@ -938,14 +961,28 @@ local function onStats(sender, ...)
 end
 
 local statsPending, lastStatsMsg = false, nil
--- Stats go to the whole group only while it is just the team. With anyone else in
--- it, or while that is not certain yet, a follower sends them to the leader alone
--- and the leader sends none. Each queued copy is checked again when it goes out.
+-- Stats go to the whole group while it is just the team. With someone else in the
+-- party they go by whisper to each team member in it, never to the outsider (owner
+-- decision: an outsider changes nothing for the team). In a raid, or while the group
+-- is not certain yet, a follower sends them to the leader alone and the leader sends
+-- none. Each queued copy is checked again when it goes out.
+local function mixedParty() return HB.GroupStatus() == "mixed" and not IsInRaid() end
 local function sendStats()
 	lastStatsMsg = statsMsg(myStats())
 	if not IsInGroup() then return end
 	if HB.GroupStatus() == "team" then
 		enqueue(lastStatsMsg, nil, "S", nil, nil, function() return HB.GroupStatus() == "team" end)
+		return
+	end
+	if mixedParty() then
+		if not isTeamName(HB.UnitIdent("player")) then return end
+		for _, name in ipairs(teamMembersInGroup()) do
+			-- its own key: a copy from the leader-only route (raid, uncertain) never
+			-- merges into this one and keeps the wrong check
+			enqueue(lastStatsMsg, name, "Sm>" .. HB.Norm(name), nil, nil, function()
+				return mixedParty() and isTeamName(HB.UnitIdent("player")) and isTeamName(name) and inGroup(name)
+			end)
+		end
 		return
 	end
 	if HB.IAmLeader() then return end

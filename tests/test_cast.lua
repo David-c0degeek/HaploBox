@@ -95,34 +95,32 @@ test("any group change in combat disarms damage at once, also a cast already bui
 	eq(assist("Frostbolt"), "Frostbolt@party2target", "re-armed after combat on the new token")
 end)
 
-test("an outsider pauses it: disarmed in combat, plain casts after, back by itself when it leaves", function()
+test("someone outside the team changes nothing; in combat the usual disarm until combat ends", function()
 	setup()
 	on()
-	W.combat = true
 	W.units.party3 = "Mallory"
 	fire("GROUP_ROSTER_UPDATE")
-	eq(assist("Frostbolt"), nil, "disarmed")
-	eq(assist("Frostbolt"), nil, "still inert on the next click")
-	eq(HB.AssistCastOn(), true, "intent kept")
+	advance(1)
+	eq(assist("Frostbolt"), "Frostbolt@party1target", "still the leader's target")
+	eq(help("Renew"), "Renew@Haplo", "still the leader")
+	eq(HB.AssistCastOn(), true, "kept")
+	eq(printedMatching("paused"), 0, "nothing said")
+	W.combat = true
+	W.units.party3 = nil
+	fire("GROUP_ROSTER_UPDATE")
+	eq(assist("Frostbolt"), nil, "a group change in combat disarms damage")
+	eq(assist("Frostbolt"), nil, "on every click")
 	W.combat = false
 	fire("PLAYER_REGEN_ENABLED")
 	advance(1)
-	eq(assist("Frostbolt"), "Frostbolt@", "outsider still there: plain cast, never the leader's target")
-	eq(help("Renew"), "Renew@", "help plain too")
-	assert(HB.CastStateText():find("paused"), "frame says paused")
-	fire("GROUP_ROSTER_UPDATE")
-	advance(1)
-	eq(printedMatching("assisted casting paused: someone outside the team"), 1, "said once per visit")
-	W.units.party3 = nil
-	fire("GROUP_ROSTER_UPDATE")
-	advance(1)
-	eq(assist("Frostbolt"), "Frostbolt@party1target", "back without /hb cast on")
-	eq(help("Renew"), "Renew@Haplo", "help on the leader again")
-	assert(not HB.CastStateText():find("paused"), "no longer paused")
-	W.units.party3 = "Mallory"
-	fire("GROUP_ROSTER_UPDATE")
-	advance(1)
-	eq(printedMatching("assisted casting paused"), 2, "a new visit says it again")
+	eq(assist("Frostbolt"), "Frostbolt@party1target", "back after combat")
+end)
+
+test("a toon that is not in the team never assists, also with someone else in the party", function()
+	setup("Mallory", { "Haplo", "Elya", "Nyra" })
+	on()
+	eq(assist("Frostbolt"), "Frostbolt@", "plain")
+	eq(help("Renew"), "Renew@", "plain")
 end)
 
 test("turned off while paused stays off; nothing said when it is already off", function()
@@ -222,4 +220,14 @@ test("the team frame shows the state; changes wait for the end of combat", funct
 	assert(HB.CastStateText():find("after combat"), "pending shown")
 	HB.CastCommand("")
 	eq(printedMatching("/click HaploBoxAssist Frostbolt"), 1, "examples shown")
+end)
+
+test("a stored leader outside the team order arms nothing, also with someone else in the party", function()
+	setup(nil, { "Haplo", "Elya", "Mallory" })
+	on()
+	HaploBoxTeam.leader = "Mallory"
+	W.targets, W.hostile = { party3 = "Hogger" }, { party3target = true }
+	HB.UpdateCastButtons()
+	eq(assist("Frostbolt"), "Frostbolt@", "never Mallory's target")
+	eq(help("Renew"), "Renew@", "never Mallory")
 end)

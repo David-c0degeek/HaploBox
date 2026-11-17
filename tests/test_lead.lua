@@ -146,20 +146,32 @@ test("no healer or two healers: Follow healer does nothing and says why", functi
 	eq(printedMatching("2 healer roles"), 1, "reason shown")
 end)
 
-test("the keys do nothing solo, in a raid, or with an outsider in the group", function()
+test("the keys do nothing solo or in a raid; someone outside the team changes nothing", function()
 	asToon("Nyra")
 	W.units = {}
 	fire("GROUP_ROSTER_UPDATE") advance(1)
 	eq(attrs("HaploBoxFollowLeader").type, nil, "solo")
 	eq(attrs("HaploBoxAssistLeader").type, nil, "assist off solo")
 	eq(attrs("HaploBoxAssistLeader").unit, nil, "no stale unit")
+	W.groupRoles = { Elya = "HEALER", Mallory = "HEALER" }  -- an outsider's role does not count
 	party("Haplo", "Elya", "Mallory")
 	fire("GROUP_ROSTER_UPDATE") advance(1)
-	eq(attrs("HaploBoxFollowLeader").type, nil, "outsider")
+	eq(attrs("HaploBoxFollowLeader").type, "macro", "outsider: still follows")
+	eq(attrs("HaploBoxFollowLeader").macrotext, "/follow Haplo", "the leader")
+	eq(attrs("HaploBoxFollowHealer").macrotext, "/follow Elya", "the team's healer, not the outsider")
 	party("Haplo", "Elya")
 	W.raid = true
 	fire("GROUP_ROSTER_UPDATE") advance(1)
 	eq(attrs("HaploBoxFollowLeader").type, nil, "raid")
+end)
+
+test("a toon that is not in the team gets no keys, also with the team in its party", function()
+	W.me = "Mallory"
+	party("Haplo", "Elya", "Nyra")
+	login({}, team())
+	advance(5)
+	eq(attrs("HaploBoxFollowLeader").type, nil, "follow off")
+	eq(attrs("HaploBoxAssistLeader").type, nil, "assist off")
 end)
 
 test("a change in combat waits, shows it, and applies after combat", function()
@@ -229,7 +241,7 @@ end)
 -- ---------------------------------------------------------------- Lead button
 local function leadShown() return HaploBoxLeadButton and HaploBoxLeadButton:IsShown() end
 
-test("the Lead button shows on team members that are not the leader, in a team-only party", function()
+test("the Lead button shows on team members that are not the leader, also with someone else in the party", function()
 	asToon("Nyra")
 	advance(1)
 	eq(leadShown(), true, "follower")
@@ -239,7 +251,7 @@ test("the Lead button shows on team members that are not the leader, in a team-o
 	asToon("Nyra")
 	party("Haplo", "Elya", "Mallory")
 	fire("GROUP_ROSTER_UPDATE") advance(1)
-	eq(leadShown(), false, "someone outside the team")
+	eq(leadShown(), true, "someone outside the team changes nothing")
 	party("Haplo", "Elya")
 	W.raid = true
 	fire("GROUP_ROSTER_UPDATE") advance(1)
@@ -289,7 +301,7 @@ test("the crown holder hands the party lead to the toon that took over", functio
 	eq(printedMatching("by hand"), 0, "no prompt when it worked")
 end)
 
-test("only the crown holder acts, and only for an accepted handover in a team-only party", function()
+test("only the crown holder acts, only for an accepted handover; an outsider in the party changes nothing", function()
 	asToon("Elya")
 	W.partyLeader = "Haplo"
 	handover("Nyra")
@@ -303,7 +315,8 @@ test("only the crown holder acts, and only for an accepted handover in a team-on
 	party("Elya", "Nyra", "Mallory")
 	fire("GROUP_ROSTER_UPDATE") advance(1)
 	handover("Nyra")
-	eq(#W.promotes, 0, "someone outside the team")
+	eq(#W.promotes, 1, "someone outside the team: passed all the same")
+	eq(W.promotes[1].unit, "party2", "to Nyra")
 end)
 
 test("a client that refuses or ignores it asks for a click; a newer handover cancels the ask", function()
@@ -376,4 +389,13 @@ test("pending crown is dropped when the leader changed again or the crown moved"
 	W.combat = true
 	handover("Nyra")
 	eq(printedMatching("when combat ends"), 0, "a toon without the crown says nothing")
+end)
+
+test("a stored leader outside the team order gives no keys", function()
+	asToon("Nyra")
+	party("Haplo", "Elya", "Mallory")
+	HaploBoxTeam.leader = "Mallory"
+	fire("GROUP_ROSTER_UPDATE") advance(1)
+	eq(attrs("HaploBoxFollowLeader").type, nil, "no follow")
+	eq(attrs("HaploBoxAssistLeader").type, nil, "no assist")
 end)

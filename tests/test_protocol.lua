@@ -317,13 +317,13 @@ test("stats go to the group while it is only the team", function()
 	eq(#sentMatching("^S|", "WHISPER"), 0, "no whisper")
 end)
 
-test("with an outsider in the group, a follower sends stats to the leader only", function()
-	asElya("Haplo", "Mallory")
+test("with an outsider in the group, stats go by whisper to each team member, never the outsider", function()
+	asElya("Haplo", "Nyra", "Mallory")
 	statsNow()
 	eq(#sentMatching("^S|", "PARTY"), 0, "never to the party")
 	local w = sentMatching("^S|", "WHISPER")
-	eq(#w, 1, "one whisper")
-	eq(w[1].target, "Haplo", "to the leader")
+	eq(#w, 2, "two whispers")
+	for _, m in ipairs(w) do assert(m.target == "Haplo" or m.target == "Nyra", m.target) end
 end)
 
 test("an uncertain roster counts as mixed", function()
@@ -333,15 +333,20 @@ test("an uncertain roster counts as mixed", function()
 	eq(#sentMatching("^S|", "WHISPER"), 1, "to the leader")
 end)
 
-test("the leader sends no stats in a mixed group, and none when the leader is missing", function()
+test("the leader sends stats in a mixed group too; a toon outside the team sends none", function()
 	party("Elya", "Mallory")
 	login({}, standardTeam("Haplo"))
 	addon("Elya", "F|?")
 	advance(1.5)
-	eq(#sentMatching("^S|"), 0, "leader sends none")
-	asElya("Nyra", "Mallory")  -- the leader is not in the group
-	statsNow()
-	eq(#sentMatching("^S|"), 0, "no leader to send to")
+	local w = sentMatching("^S|", "WHISPER")
+	eq(#w, 1, "leader sends to Elya")
+	eq(w[1].target, "Elya", "only Elya")
+	W.me = "Mallory"
+	party("Haplo", "Elya")
+	login({}, standardTeam("Haplo"))
+	addon("Haplo", "F|?")
+	advance(1.5)
+	eq(#sentMatching("^S|"), 0, "not in the team: nothing")
 end)
 
 test("queued stats are dropped when the route changes before they go", function()
@@ -354,14 +359,15 @@ test("queued stats are dropped when the route changes before they go", function(
 	eq(#sentMatching("^S|", "PARTY"), 0, "group copy dropped")
 end)
 
-test("a queued whisper to the leader is dropped when the leader changes or the group becomes the team", function()
+test("a queued stats whisper is dropped when its member leaves the team or the group becomes the team", function()
 	asElya("Haplo", "Mallory")
 	W.sendResults = { 3, 3 }
 	addon("Haplo", "F|?")
 	advance(1.05)
-	HaploBoxTeam.leader = "Nyra"
+	HaploBoxTeam.order = { "Elya", "Nyra" }
+	HaploBoxTeam.leader = "Nyra"   -- Haplo is no longer in the team, still in the party
 	advance(5)
-	eq(#sentMatching("^S|", "WHISPER"), 0, "old leader gets nothing")
+	eq(#sentMatching("^S|", "WHISPER"), 0, "Haplo gets nothing")
 	asElya("Haplo", "Mallory")
 	W.sendResults = { 3, 3 }
 	addon("Haplo", "F|?")
@@ -380,4 +386,25 @@ test("whispered stats count only from a team member in my group", function()
 	eq(HB.stats.mallory, nil, "outsider ignored")
 	addon("Nyra", "S|10|5|20|0|100|8|16", "WHISPER")  -- team, not in the group
 	eq(HB.stats.nyra, nil, "not in my group")
+end)
+
+test("stats coalesce per route: an uncertain-to-mixed or mixed-to-uncertain change under throttling still delivers", function()
+	asElya("Haplo", "Unknown")      -- uncertain: to the leader alone
+	W.sendResults = { 3, 3 }
+	addon("Haplo", "F|?")
+	advance(1.05)
+	W.units.party2 = "Mallory"      -- the name resolves: mixed now
+	addon("Haplo", "F|?")
+	advance(6)
+	local w = sentMatching("^S|", "WHISPER")
+	assert(#w >= 1, "the mixed copy went out")
+	for _, m in ipairs(w) do eq(m.target, "Haplo", "only the team") end
+	asElya("Haplo", "Mallory")      -- mixed
+	W.sendResults = { 3, 3 }
+	addon("Haplo", "F|?")
+	advance(1.05)
+	W.units.party2 = "Unknown"      -- uncertain now
+	addon("Haplo", "F|?")
+	advance(6)
+	assert(#sentMatching("^S|", "WHISPER") >= 1, "the leader-only copy went out")
 end)

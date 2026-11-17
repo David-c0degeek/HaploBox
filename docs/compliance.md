@@ -67,7 +67,7 @@ Mixed group: what changes when someone outside the team is in the group.
 | Release / Rezz team | Leader clicks the buttons (`D`) | `RepopMe`, `AcceptResurrect`, `RetrieveCorpse` on the follower | Leader's click | Only from the stored leader | Owner decision: kept |
 | Team offer / sync | `/hb team`, Send team, options button | Team list on every toon | Leader's click; followers accept a new leader in a popup | New members need a confirmation popup on the leader | Changed for #7 |
 | Follow, focus, errors | Local events | Group addon messages | None | Outsiders' messages ignored; outsiders with addon tools can read them | Kept; see privacy |
-| Stats (level, XP, gold, bags) | Local events | Group addon message in a team-only group | None | Followers whisper them to the leader only; the leader sends none; an unsure roster counts as mixed | Changed 2026-11-17 |
+| Stats (level, XP, gold, bags) | Local events | Group addon message in a team-only group | None | Every team toon (the leader too) whispers them to each team member in the party, never the outsider; an unsure roster: followers to the leader only | Changed 2026-11-17 (owner decision: an outsider changes only the loot) |
 | Whisper forwarding | Whisper from outside the team | Addon whisper to the leader | Stranger whispers | Not affected (addon whisper, never the group) | Kept |
 | Reply relay | Leader replies (`Y`) | Chat whisper from the follower to the stranger | Leader types the reply | Only from the stored leader | Kept; chat, not gameplay |
 | HoTs, required buffs, aura windows | Unit aura events, 1 s timer | Display only | None | Game data about group members | Display only; restricted data shows unknown |
@@ -75,11 +75,11 @@ Mixed group: what changes when someone outside the team is in the group.
 | Team heal announcements | The healer's own heal cast and the spell's description (no combat log: WoW Forever forbids it to addons) | Display of the estimate on the team frame | None | Group channel only in a team-only group; otherwise a whisper to the leader; none in raids; the client's API wins where it exists | Not yet checked in the game |
 | Share UI layout | Leader confirms a popup | Display settings and positions on followers | Leader's click | Whisper to team members only; followers accept only from their leader, can turn it off and undo | Display only; no gameplay or team settings |
 | Abandon quest on team | Leader abandons a quest, then confirms a popup | Followers abandon the same quest | Leader's Yes | Followers act only on their stored leader's message, only for a quest they have; follower setting turns it off | Owner-requested 2026-11-16 |
-| Take over as leader | A key press, a click on the Lead button or /hb lead on the new leader | The leader name on every toon with the same team | That toon's own press | Sender must be a team member in the group with the same team; newest wins; roles and order unchanged. The old crown holder then passes the party lead to it (`C_PartyInfo.PromoteToLeader` on its party token, team-only party; if refused, a prompt to do it by hand) | Leader name and party lead |
-| Follow / assist keys | The player's key press, or /click HaploBoxAssistLeader in the player's own macro | /follow or assist by name | The player's own press | Set out of combat; nothing solo, in raids or mixed groups; on the leader only Follow healer (follows the healer) | Never pressed by HaploBox |
+| Take over as leader | A key press, a click on the Lead button or /hb lead on the new leader | The leader name on every toon with the same team | That toon's own press | Sender must be a team member in the group with the same team; newest wins; roles and order unchanged. The old crown holder then passes the party lead to it (`C_PartyInfo.PromoteToLeader` on its party token, also with someone outside the team in the party; in combat when combat ends; if refused, a prompt to do it by hand) | Leader name and party lead |
+| Follow / assist keys | The player's key press, or /click HaploBoxAssistLeader in the player's own macro | /follow or assist by name | The player's own press | Set out of combat; nothing solo or in raids; an outsider changes nothing (only team members count, the toon itself must be in the team); on the leader only Follow healer (follows the healer) | Never pressed by HaploBox |
 | Gathering nodes | The player's own hover over a node on the minimap or in the world, or own gathering | A marker on the leader's minimap (a world hover at the follower's own position, marked as approximate) | Nothing: display only | Reads the game's tooltip only while the player's cursor is on it, never secret text (WoW Forever's minimap tooltip is secret, so not read); no cursor movement, scanning, pixels or memory; whisper to the leader only | Not yet checked in the game |
 | Unknown minimap icons (opt-in, off by default) | The player's own hover over a minimap icon whose tooltip text the client marks secret | A "?" marker at that spot on the leader's minimap | Nothing: display only | Uses only whether the text is secret (`issecretvalue`) and the player's own cursor position on the minimap; the text itself is never read, compared, stored or sent; whisper to the leader only | Owner decision: allowed as an opt-in |
-| Assist-or-cast spells | The player's own key press on their own macro (`/click HaploBoxAssist <spell>`, `/click HaploBoxHelp <spell>`) | Cast at the leader's target, or a heal or buff on the leader (no mouseover) | The player's own press | Opt-in (saved); normal casts in solo, raid and on the leader; someone outside the team pauses it (plain casts until the group is only the team again); secure code disarms damage on any group change in combat; no macro edits | Not yet checked in the game |
+| Assist-or-cast spells | The player's own key press on their own macro (`/click HaploBoxAssist <spell>`, `/click HaploBoxHelp <spell>`) | Cast at the leader's target, or a heal or buff on the leader (no mouseover) | The player's own press | Opt-in (saved); normal casts in solo, raid and on the leader; someone outside the team changes nothing (the toon itself must be in the team); secure code disarms damage on any group change in combat; no macro edits | Not yet checked in the game |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 
 Built offline but not yet checked in the game: leader handover and role keys
@@ -124,11 +124,20 @@ destinations) go to the party channel. Outsiders cannot control a toon with them
 but anyone with an addon that listens to the HaploBox prefix can read them.
 Whispers and replies already go by addon whisper only.
 
-Stats (level, XP, gold, bag space): decided 2026-11-17. While someone outside the
-team is in the group, or the roster is not certain yet, a follower sends them to
-the leader alone by addon whisper and the leader sends none. A copy that waits in
-the send queue is checked again when it goes out, so a change of group or leader
-drops it. The leader accepts stats only from team members in its group.
+Owner decision (2026-11-17, superseding the earlier mixed-group limits): someone
+outside the team in the party changes only the loot. Everything else works as in
+a team-only party, for team members only.
+
+Stats (level, XP, gold, bag space) and incoming heals: while someone outside the
+team is in the party, every team toon sends them by addon whisper to each team
+member in the party, never to the outsider and never on the party channel. While
+the roster is not certain yet, a follower sends stats to the leader alone. A copy
+that waits in the send queue is checked again when it goes out (still mixed,
+recipient still in the team and in the party), so a change drops it. A heal stop
+for a start that went to the party goes by whisper to each team member once
+someone else is in the party. Receivers accept these only from team members in
+their group. Other group messages listed above (follow state, focus target, cast
+errors, flights, handovers) still use the party channel.
 
 ## Tests
 

@@ -160,7 +160,7 @@ explicit key press or click on the toon that becomes the leader.
   works without a click out of combat and is refused in combat, so a handover
   accepted in combat promotes once when combat ends (the newest handover only).
 - **Lead button (owner request):** a plain (not secure) button on every team
-  member that is not the leader, in a team-only party; a click runs
+  member that is not the leader, in a party (an outsider in it changes nothing); a click runs
   `HB.TakeLead()`, also in combat. The followers' secure buttons update when
   combat ends, as for any leader change.
 - **Succession (planned, not built; owner request: off by default, owner picks
@@ -312,8 +312,24 @@ This replaces the `/assist` candidate below, which stays for the record.
   - a state driver runs on any change away from a party.
   HaploBox arms the buttons again only out of combat, after checking the group.
 - **Off switch:** opt-in, saved (`castAssist`). Normal casts in solo, raid or
-  unconfirmed groups and on the leader; someone outside the team pauses it
-  (intent kept; owner request after a third toon joined before `/hb team`).
+  unconfirmed groups and on the leader. Someone outside the team in the party
+  changes nothing (owner decision, 2026-11-17: only the loot changes); the toon
+  itself must be in the team.
+- **Mixed parties, pre-mortem (2026-11-17), kept as resolved:**
+  - PM-3 High — with "team" no longer required, nothing proves that this toon
+    and the stored leader belong to the accepted team. Resolution: assisted
+    casting and the role keys require `HB.IsTeamName(player)` and
+    `HB.InTeamOrder(leader)`; the healer role counts team names only. Tests: a
+    toon outside the team gets plain casts and no keys; a stored leader outside
+    the team order arms nothing.
+  - PM-4 Medium — fan-out to each team member loses the old queue and
+    cancellation rules. Resolution: per-recipient stats keys (`Sm>` for the
+    mixed route, `S>` for the leader-only route, never merged); heal routes
+    tracked per recipient; every stop is checked again when it goes out (a
+    party stop that finds someone else in the party goes to each team member by
+    whisper instead). Tests: queued copies dropped when a member leaves the
+    team, when the group turns team-only, and a queued party stop after an
+    outsider joins.
 - **verify:** that the header, `refreshUnitChange`, `_onattributechanged` and the
   state driver behave like this on Forever and Classic Era. Also verify
   `@<token>target` and `@<name>` in macro conditionals, and that `/click` reaches
@@ -339,8 +355,9 @@ This replaces the `/assist` candidate below, which stays for the record.
   HaploBox would not edit this macro or need character names. Solo, the click
   would do nothing and Frostbolt would cast at the current target as normal.
   Do not recommend it until the targeting checks below pass.
-- **Groups:** the button is active only when the group is the accepted team
-  (`HB.GroupStatus()` is "team"). In a mixed group or a random group it stays off.
+- **Groups:** the button is active only when this toon and the leader are in the
+  accepted team (`HB.GroupStatus()` is "team" or "mixed"; owner decision
+  2026-11-17: an outsider changes only the loot). In a random group it stays off.
   Being in some group is never enough.
 - **Combat:** the button is updated only out of combat. If the leader or the
   group changes in combat, it keeps its old setting until combat ends. The team
