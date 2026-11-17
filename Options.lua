@@ -55,6 +55,8 @@ local SECTIONS = {
 	{ id = "follow", title = "Follow & alerts", items = {
 		{ "alertOnFollowStart", "toggle", "Also show a message when a follower starts following", who = "leader" },
 		{ "relayErrors", "toggle", "Send my cast errors (range, line of sight, mana) to the leader", who = "followers" },
+		{ "leadButton", "toggle", "Lead button: click it to take over as leader", who = "followers",
+			help = "Shown on team members that are not the leader, in a party of only the team. Works in combat; Shift-drag to move. Same as /hb lead." },
 		{ "castAssist", "toggle", "HaploBoxAssist and HaploBoxHelp cast for the leader", who = "followers",
 			help = "Your own macros: /click HaploBoxAssist Frostbolt, /click HaploBoxHelp Flash_Heal (_ for spaces). Not yet checked in the game." },
 		{ "showRelayedErrors", "toggle", "Show followers' cast errors in chat", who = "leader" },

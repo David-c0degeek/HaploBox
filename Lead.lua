@@ -288,3 +288,63 @@ function HB.OnRoleControlsPending(on)
 	end
 	note:SetShown(on and true or false)
 end
+
+-- ---------------------------------------------------------------- Lead button
+-- A small button on every team member that is not the leader, in a party of only
+-- the team: clicking it takes over as leader (the same as /hb lead), also in
+-- combat. Mouse clicks reach the game even when a window tool keeps the F keys.
+-- Not secure: it only sends the handover; the followers' secure buttons follow
+-- once combat ends. Shift-drag moves it; Settings > Follow & alerts hides it.
+local leadBtn
+local function leadPlace(b)
+	b:ClearAllPoints()
+	local p = HB.db.leadPos
+	if type(p) == "table" and type(p[3]) == "number" and type(p[4]) == "number" then
+		b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", p[3], p[4])
+	else
+		b:SetPoint("TOP", UIParent, "TOP", 0, -120)
+	end
+end
+
+local function leadWanted()
+	if not HB.db.leadButton then return false end
+	if not IsInGroup() or IsInRaid() then return false end
+	if HB.GroupStatus() ~= "team" then return false end
+	if not HB.IsTeamName(HB.UnitIdent("player")) then return false end
+	return not HB.IAmLeader()
+end
+
+function HB.UpdateLeadButton()
+	if not leadBtn then
+		local b = CreateFrame("Button", "HaploBoxLeadButton", UIParent, "UIPanelButtonTemplate")
+		b:SetSize(64, 22)
+		b:SetText("Lead")
+		b:SetMovable(true)
+		b:SetClampedToScreen(true)
+		b:RegisterForDrag("LeftButton")
+		b:SetScript("OnDragStart", function(self) if IsShiftKeyDown() then self:StartMoving() end end)
+		b:SetScript("OnDragStop", function(self)
+			self:StopMovingOrSizing()
+			local x, y = self:GetCenter()
+			if x and y then HB.db.leadPos = { "CENTER", "BOTTOMLEFT", x, y } end
+		end)
+		b:SetScript("OnClick", function() HB.TakeLead() HB.UpdateLeadButton() end)
+		b:SetScript("OnEnter", function(self)
+			if not GameTooltip then return end
+			GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+			GameTooltip:SetText("Take over as leader")
+			GameTooltip:AddLine("The team follows and assists this toon. Shift-drag to move.", 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+		leadPlace(b)
+		leadBtn = b
+	end
+	leadBtn:SetShown(leadWanted())
+end
+
+local leadEv = CreateFrame("Frame")
+leadEv:SetScript("OnEvent", function() C_Timer.After(0.2, HB.UpdateLeadButton) end)
+for _, e in ipairs({ "PLAYER_LOGIN", "GROUP_ROSTER_UPDATE", "PARTY_LEADER_CHANGED" }) do
+	pcall(leadEv.RegisterEvent, leadEv, e)
+end

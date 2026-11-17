@@ -225,3 +225,48 @@ test("an unreadable group role makes the healer unknown", function()
 	eq(h, nil, "unknown")
 	eq(why, "group roles cannot be read", "says why")
 end)
+
+-- ---------------------------------------------------------------- Lead button
+local function leadShown() return HaploBoxLeadButton and HaploBoxLeadButton:IsShown() end
+
+test("the Lead button shows on team members that are not the leader, in a team-only party", function()
+	asToon("Nyra")
+	advance(1)
+	eq(leadShown(), true, "follower")
+	asToon("Haplo")
+	advance(1)
+	eq(leadShown(), false, "not on the leader")
+	asToon("Nyra")
+	party("Haplo", "Elya", "Mallory")
+	fire("GROUP_ROSTER_UPDATE") advance(1)
+	eq(leadShown(), false, "someone outside the team")
+	party("Haplo", "Elya")
+	W.raid = true
+	fire("GROUP_ROSTER_UPDATE") advance(1)
+	eq(leadShown(), false, "raid")
+	W.raid = false
+	W.units = {}
+	fire("GROUP_ROSTER_UPDATE") advance(1)
+	eq(leadShown(), false, "solo")
+end)
+
+test("clicking Lead takes over, also in combat, and the button moves to the old leader", function()
+	asToon("Nyra")
+	advance(1)
+	W.combat = true
+	W.sent = {}
+	HaploBoxLeadButton.scripts.OnClick(HaploBoxLeadButton)
+	eq(HB.IAmLeader(), true, "leader now")
+	eq(#sentMatching("^H|"), 1, "handover sent in combat")
+	eq(leadShown(), false, "hidden on the new leader")
+	advance(1)
+	eq(HB.RoleControlsPending(), true, "secure buttons wait for the end of combat")
+end)
+
+test("the Lead button can be turned off", function()
+	asToon("Nyra", { leadButton = false })
+	advance(1)
+	eq(leadShown(), false, "off")
+	HB.SetOption("leadButton", true)
+	eq(leadShown(), true, "on")
+end)

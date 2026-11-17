@@ -152,6 +152,34 @@ explicit key press or click on the toon that becomes the leader.
   work in that repository.
 - **Built (offline, 2026-11-17):** `Lead.lua` has the handover and the three
   role controls as described above.
+- **Lead button (owner request):** a plain (not secure) button on every team
+  member that is not the leader, in a team-only party; a click runs
+  `HB.TakeLead()`, also in combat. The followers' secure buttons update when
+  combat ends, as for any leader change.
+- **Succession (planned, not built; owner request: off by default, owner picks
+  the order).** Follower buttons would pick, at click time, the first living toon
+  of a succession order. Pre-mortem risks from the review, kept as written:
+  - PM-1 High — secure disarm can be undone by candidate BUILD logic [evidence:
+    Cast.lua DISARM/BUILD and test_cast combat-disarm tests]. Existing tests prove
+    blank prefix remains blank; a new candidate-selection pre-click can
+    accidentally repopulate it. Guardrail: separate OOC-granted
+    eligibility/generation from candidate selection; DISARM revokes it and
+    candidate tokens, every subsequent click stays inert until OOC refresh. Test
+    multiple post-disarm clicks and roster-token reassignment, plus succession
+    off preserves current behavior.
+  - PM-2 High — order-authority divergence [evidence: Lead.lua handover
+    validates rosterHash; proposal O omits it and allows editing any toon while
+    only leader publishes]. Follower edits can remain local forever; delayed
+    old-roster O can apply if names overlap. Guardrail: define one published
+    source of truth (leader-only editor, or follower drafts explicitly sent for
+    leader acceptance), validate a complete deduplicated current-roster
+    permutation atomically with roster hash and bounded message length, and
+    specify monotonic revision behavior across handovers/reloads. Tests:
+    follower edit cannot silently become local active order, stale O after
+    roster change rejected, older/duplicate O ignored, new leader can publish
+    newer order.
+  - Unknowns before enabling: name conditionals with `exists`/`nodead` at run
+    time, and building the follow macro text in restricted code.
 - **Assist from a macro (owner request, after the game check of #8):**
   `HaploBoxAssistLeader` is `type = "assist"` with `unit = <leader name>`
   (`SECURE_ACTIONS.assist` calls `AssistUnit`), so `/click HaploBoxAssistLeader`

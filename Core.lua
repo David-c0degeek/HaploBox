@@ -58,6 +58,7 @@ local DEFAULTS = {
 	teamShowBuffs       = true,   -- team frame: buffs from the group (a minute or longer) with timers
 	teamHealPrediction  = true,   -- team frame: incoming heals on the health bars (the client's, else the team's own)
 	castAssist          = false,  -- HaploBoxAssist/HaploBoxHelp cast for the leader (opt-in, saved)
+	leadButton          = true,   -- a Lead button on team members that are not the leader (#4)
 	teamSendHeals       = true,   -- announce my own heals to the team for their health bars (estimates)
 	teamCastBars        = true,   -- team frame: slim cast and channel bar on the health bars
 	teamManaRule        = true,   -- team frame: five-second mana rule timer (Classic Era only)
@@ -592,6 +593,7 @@ end
 
 local function refreshTeam()
 	if HB.UpdateRoleControls then C_Timer.After(0.2, HB.UpdateRoleControls) end
+	if HB.UpdateLeadButton then C_Timer.After(0.2, HB.UpdateLeadButton) end
 	if HB.UpdateCastButtons then C_Timer.After(0.2, HB.UpdateCastButtons) end
 	if HB.RevalidateIncomingHeals then HB.RevalidateIncomingHeals() end
 	if HB.ScheduleLootCheck then HB.ScheduleLootCheck(1) end
@@ -1782,6 +1784,7 @@ function HB.SetOption(key, value)
 	if key == "teamSendHeals" and not value and HB.StopHealAnnouncements then HB.StopHealAnnouncements() end
 	if key == "nodeShare" and not value and HB.ClearNodeQueue then HB.ClearNodeQueue() end
 	if key == "castAssist" and HB.UpdateCastButtons then HB.UpdateCastButtons() end
+	if key == "leadButton" and HB.UpdateLeadButton then HB.UpdateLeadButton() end
 	if key:match("^node") and HB.RefreshNodePins then HB.RefreshNodePins() end
 	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
 	return value
