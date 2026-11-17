@@ -509,3 +509,123 @@ test("the same tooltip becomes valid when the mouse moves onto the minimap; read
 	advance(2)
 	eq(#reports(), 1, "no repeat report within a minute")
 end)
+
+-- a secret value that fails on any use except identity: never read, joined or keyed
+local function opaqueSecret()
+	local p = setmetatable({}, {
+		__index = function() error("secret indexed") end,
+		__tostring = function() error("secret turned into text") end,
+		__concat = function() error("secret joined") end,
+		__eq = function() error("secret compared") end,
+		__len = function() error("secret measured") end,
+		__call = function() error("secret called") end,
+	})
+	W.secrets = { [p] = true }
+	return p
+end
+
+test("unknown minimap icons: off by default; on, a secret minimap tooltip sends only \"?\" and the spot", function()
+	asFollower({ debug = true })
+	local s = opaqueSecret()
+	GetMouseFoci = function() return { Minimap } end
+	hoverMinimap(s, 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 0, "off by default")
+	eq(printedMatching("minimap tooltip is secret on this client"), 1, "the hint as before")
+	asFollower({ debug = true, nodeUnknown = true })
+	s = opaqueSecret()
+	GetMouseFoci = function() return { Minimap } end
+	hoverMinimap(s, 30, 0, "UIParent")
+	nativeHover(s, 30, 0, 1)
+	advance(2)
+	local r = reports()
+	eq(#r, 1, "one report, also with the tooltip read again natively")
+	eq(r[1].msg, "N|u|1429|5333|5000|h|" .. GetServerTime() - 2 .. "|?", "kind u, the hovered spot, name ?")
+	eq(printedMatching("error"), 0, "the secret was never used")
+	eq(printedMatching("unknown minimap icon reported"), 1, "debug says so")
+end)
+
+test("unknown minimap icons: the world, no focus API, outside the circle or not sharing send nothing", function()
+	asFollower({ nodeUnknown = true })
+	local s = opaqueSecret()
+	GetMouseFoci = function() return { WorldFrame } end
+	hoverMinimap(s, 30, 0, "UIParent")
+	GetMouseFoci, GetMouseFocus = nil, nil
+	hoverMinimap(s, 0, 30, "UIParent")
+	GetMouseFoci = function() return { Minimap } end
+	hoverMinimap(s, 200, 0, "UIParent")
+	HB.db.nodeShare = false
+	hoverMinimap(s, 0, -30, "UIParent")
+	advance(4)
+	eq(#reports(), 0, "nothing")
+	eq(printedMatching("error"), 0, "no error")
+end)
+
+test("the leader checks unknown reports and shows them as ?", function()
+	asLeader()
+	for _, bad in ipairs({ N("u", 5000, 5000, "h", 0, "Peacebloom"), N("h", 5000, 5000, "h", 0, "?"),
+		N("u", 5000, 5000, "g", 0, "?"), N("u", 5000, 5000, "w", 0, "?") }) do
+		addon("Elya", bad, "WHISPER")
+	end
+	eq(#HB.NodeMarkers(), 0, "named unknowns, ? as a name, unknown gathers and world unknowns refused")
+	addon("Elya", N("u", 5000, 5000, "h", 0, "?"), "WHISPER")
+	addon("Nyra", N("u", 5005, 5000, "h", 0, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "stored, nearby merged")
+	local m = HB.NodeMarkers()[1]
+	eq(m.kind, "u", "kind")
+	eq(m.name, "?", "name")
+	HB.SetOption("nodeHerbs", false)
+	HB.SetOption("nodeOre", false)
+	eq(#HB.NodePinsShown(), 1, "shown although herbs and ore are hidden")
+	eq(HB.NodePinsShown()[1].icon.texture, "Interface\\Icons\\INV_Misc_QuestionMark", "a question mark")
+	HB.SetOption("nodeUnknownShow", false)
+	eq(#HB.NodePinsShown(), 0, "hidden on its own")
+end)
+
+test("a named sighting replaces an unknown one; an unknown never downgrades a named one", function()
+	asLeader()
+	addon("Elya", N("u", 5000, 5000, "h", 0, "?"), "WHISPER")
+	addon("Nyra", N("h", 5005, 5000, "w", 0, "Earthroot"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "one marker")
+	eq(HB.NodeMarkers()[1].name, "Earthroot", "named now")
+	addon("Elya", N("u", 5003, 5000, "h", 0, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "no ? added beside it")
+	eq(HB.NodeMarkers()[1].kind, "h", "still a herb")
+end)
+
+test("a gather removes an unknown marker, and an older unknown cannot bring it back", function()
+	asLeader()
+	addon("Elya", N("u", 5000, 5000, "h", 30, "?"), "WHISPER")
+	addon("Nyra", N("h", 5005, 5000, "g", 10, "Earthroot"), "WHISPER")
+	eq(#HB.NodeMarkers(), 0, "gathered")
+	addon("Elya", N("u", 5002, 5000, "h", 20, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 0, "an unknown seen before the gather stays gone")
+	addon("Elya", N("u", 5002, 5000, "h", 0, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "a newer one shows (the node may have come back)")
+end)
+
+test("unknown icons need the visible round minimap also when the minimap owns the tooltip", function()
+	asFollower({ nodeUnknown = true })
+	local s = opaqueSecret()
+	GetMouseFoci, GetMouseFocus = nil, nil
+	hoverMinimap(s, 200, 0)             -- owner Minimap, far outside
+	hoverMinimap(s, 60, 60)             -- owner Minimap, a corner of the frame
+	Minimap.shown = false
+	hoverMinimap(s, 10, 0)              -- owner Minimap, hidden
+	Minimap.shown = true
+	advance(4)
+	eq(#reports(), 0, "nothing")
+	hoverMinimap(s, 10, 0)              -- owner Minimap, inside: counts even without a focus API
+	advance(2)
+	eq(#reports(), 1, "inside")
+end)
+
+test("a rejected old named sighting leaves a newer unknown marker alone", function()
+	asLeader()
+	addon("Nyra", N("h", 5000, 5000, "g", 50, "Earthroot"), "WHISPER")
+	addon("Elya", N("u", 5003, 5000, "h", 40, "?"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "newer ? shows")
+	addon("Elya", N("h", 5002, 5000, "h", 55, "Earthroot"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "old named report rejected, ? kept")
+	eq(HB.NodeMarkers()[1].kind, "u", "still ?")
+end)

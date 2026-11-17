@@ -305,6 +305,43 @@ local function worldHover(names, label)
 	end
 end
 
+local unknownHover
+-- The cursor's offset from the minimap centre, when it is on the visible round
+-- minimap; nil and a debug reason otherwise.
+local function minimapOffset(fromMinimap, label)
+	if not fromMinimap then
+		local ok, visible = pcall(Minimap.IsVisible, Minimap)
+		if not (ok and visible) then why("the minimap is hidden", label) return end
+	end
+	if not GetCursorPosition then why("no cursor position", label) return end
+	local cx, cy = GetCursorPosition()
+	local scale = Minimap:GetEffectiveScale()
+	local mx, my = Minimap:GetCenter()
+	if not (cx and mx and scale and scale > 0) then why("no cursor or minimap position", label) return end
+	local sx, sy = cx / scale - mx, cy / scale - my
+	if not fromMinimap then
+		local r = (Minimap:GetWidth() or 0) / 2
+		if sx * sx + sy * sy > r * r then  -- a corner of the frame, outside the round map
+			why("the cursor is outside the minimap circle", string.format(" (dx %d, dy %d, radius %d)", sx, sy, r) .. label)
+			return
+		end
+	end
+	return sx, sy
+end
+
+-- A minimap icon whose tooltip text the client keeps secret (owner opt-in,
+-- nodeUnknown): reported as "?" with kind "u" at the hovered spot, nothing else.
+unknownHover = function(fromMinimap)
+	local label = " (unknown icon)"
+	-- always the visible round minimap under the cursor, whoever owns the tooltip
+	local sx, sy = minimapOffset(false, label)
+	if not sx then return end
+	if not shareTarget() then why("not sharing now (setting, group or leader)", label) return end
+	local mapID, x, y = offsetToMap(sx, sy)
+	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here", label) return end
+	if report("h", "?", "u", mapID, x, y) then HB.debug("node: unknown minimap icon reported") end
+end
+
 local function onTooltip()
 	if not (GameTooltip and Minimap) then return end
 	local owner = GameTooltip:GetOwner()
@@ -315,11 +352,16 @@ local function onTooltip()
 	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
 	if line == nil then return end
 	if HB.secret(line) then
-		-- never matched, cached or joined: only said when the mouse is on the minimap
+		-- never matched, cached, joined or sent: only whether it is secret is used.
+		-- On the minimap (owner or frame under the mouse; without a focus API the
+		-- world cannot be told apart, so nothing) it can be shared as "something here"
 		local status, focus = mouseFocus()
-		if fromMinimap or (status and onMinimapFrame(focus)) then
+		if not (fromMinimap or (status and onMinimapFrame(focus))) then return end
+		if not HB.db.nodeUnknown then
 			why("the minimap tooltip is secret on this client: hover nodes in the world instead")
+			return
 		end
+		unknownHover(fromMinimap)
 		return
 	end
 	if type(line) ~= "string" then return end
@@ -341,23 +383,10 @@ local function onTooltip()
 		end
 		-- WoW Forever's Minimap:IsMouseOver() answers false even with the cursor on
 		-- the minimap, so it is not asked: the visible round minimap under the cursor
-		-- decides (the circle check below)
-		local ok, visible = pcall(Minimap.IsVisible, Minimap)
-		if not (ok and visible) then why("the minimap is hidden", label) return end
+		-- decides (the circle check)
 	end
-	if not GetCursorPosition then why("no cursor position", label) return end
-	local cx, cy = GetCursorPosition()
-	local scale = Minimap:GetEffectiveScale()
-	local mx, my = Minimap:GetCenter()
-	if not (cx and mx and scale and scale > 0) then why("no cursor or minimap position", label) return end
-	local sx, sy = cx / scale - mx, cy / scale - my
-	if not fromMinimap then
-		local r = (Minimap:GetWidth() or 0) / 2
-		if sx * sx + sy * sy > r * r then  -- a corner of the frame, outside the round map
-			why("the cursor is outside the minimap circle", string.format(" (dx %d, dy %d, radius %d)", sx, sy, r) .. label)
-			return
-		end
-	end
+	local sx, sy = minimapOffset(fromMinimap, label)
+	if not sx then return end
 	if not shareTarget() then why("not sharing now (setting, group or leader)", label) return end
 	local mapID, x, y = offsetToMap(sx, sy)
 	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here", label) return end
@@ -379,8 +408,18 @@ local function onTooltipUpdate()
 	if t - lastRun < 0.2 then return end
 	lastRun = t
 	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
-	if type(line) ~= "string" or HB.secret(line) then return end
-	local key = line .. "|" .. tostring(GameTooltip:GetOwner())
+	if line == nil then return end
+	local key
+	if HB.secret(line) then
+		-- the text is never used: the owner and the cursor (in 8 px steps) only
+		local cx, cy
+		if GetCursorPosition then cx, cy = GetCursorPosition() end
+		key = "secret|" .. tostring(GameTooltip:GetOwner()) .. "|" .. math.floor((cx or 0) / 8) .. "|" .. math.floor((cy or 0) / 8)
+	elseif type(line) == "string" then
+		key = line .. "|" .. tostring(GameTooltip:GetOwner())
+	else
+		return
+	end
 	if key == lastKey and t - lastKeyAt < 1 then return end
 	lastKey, lastKeyAt = key, t
 	safeTooltip()
@@ -452,8 +491,10 @@ function HB.OnNodeReport(sender, msg)
 	if #msg > 120 then drop("too long") return end
 	if not HB.IAmLeader() then drop("I am not the leader") return end
 	if not HB.InGroup(sender) then drop("not in my group") return end
-	local kind, mapID, x, y, src, t, name = msg:match("^N|([ho])|(%d+)|(%d+)|(%d+)|([hgw])|(%d+)|([^|\r\n]+)$")
+	local kind, mapID, x, y, src, t, name = msg:match("^N|([hou])|(%d+)|(%d+)|(%d+)|([hgw])|(%d+)|([^|\r\n]+)$")
 	if not kind or not validName(name) then HB.debug("node report from " .. sender .. " ignored: bad format") return end
+	-- an unknown icon is only ever "?", seen on the minimap: never named, never gathered
+	if (kind == "u") ~= (name == "?") or (kind == "u" and src ~= "h") then drop("bad unknown report") return end
 	mapID, x, y, t = tonumber(mapID), tonumber(x), tonumber(y), tonumber(t)
 	if mapID < 1 or mapID > 100000 or x > 10000 or y > 10000 then drop("bad map or position") return end
 	local age = now() - t
@@ -465,7 +506,7 @@ function HB.OnNodeReport(sender, msg)
 	if src == "g" then
 		for i = #markers, 1, -1 do
 			local m = markers[i]
-			if m.name == name and near(m, obs) and m.t <= t then table.remove(markers, i) end
+			if (m.name == name or m.kind == "u") and near(m, obs) and m.t <= t then table.remove(markers, i) end
 		end
 		local merged = false
 		for _, tb in ipairs(tombs) do
@@ -473,12 +514,33 @@ function HB.OnNodeReport(sender, msg)
 		end
 		if not merged then tombs[#tombs + 1] = obs end
 		HB.debug("node: " .. name .. " gathered by " .. sender)
+	elseif kind == "u" then
+		for _, tb in ipairs(tombs) do
+			if near(tb, obs) and tb.t >= t then drop("? was gathered after this sighting") return end
+		end
+		local merged = false
+		for _, m in ipairs(markers) do
+			if near(m, obs) then
+				if m.kind ~= "u" then HB.debug("node: ? from " .. sender .. ": " .. m.name .. " is known there") return end
+				if t > m.t then m.t, m.by = t, sender end
+				merged = true
+			end
+		end
+		if not merged then markers[#markers + 1] = obs end
+		prune()
+		HB.debug("node: ? from " .. sender .. (merged and " merged" or " stored") .. " (" .. #markers .. " markers)")
+		refresh()
+		return
 	else
 		for _, tb in ipairs(tombs) do
 			if tb.name == name and near(tb, obs) and tb.t >= t then  -- gathered after this was seen
 				drop(name .. " was gathered after this sighting")
 				return
 			end
+		end
+		-- an accepted named sighting replaces an unknown one there
+		for i = #markers, 1, -1 do
+			if markers[i].kind == "u" and near(markers[i], obs) then table.remove(markers, i) end
 		end
 		local merged = false
 		for _, m in ipairs(markers) do
@@ -502,6 +564,7 @@ function HB.NodeMarkers() return markers end
 function HB.ClearNodeMarkers() wipe(markers) wipe(tombs) refresh() end
 
 local function shown(m)
+	if m.kind == "u" then return HB.db.nodeUnknownShow end
 	if m.kind == "h" then return HB.db.nodeHerbs end
 	return HB.db.nodeOre
 end
@@ -511,8 +574,15 @@ local function pinTooltip(pin)
 	if not m or not GameTooltip then return end
 	GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
 	local mins = math.max(0, math.floor((now() - m.t) / 60))
-	GameTooltip:SetText(m.name)
 	local who = (m.by:gsub("%-.*$", ""))
+	if m.kind == "u" then
+		GameTooltip:SetText("? something on the minimap")
+		GameTooltip:AddLine("seen by " .. who .. " " .. (mins == 0 and "just now" or (mins .. " min ago"))
+			.. ": a herb, ore, chest...? May be gone", 0.8, 0.8, 0.8, true)
+		GameTooltip:Show()
+		return
+	end
+	GameTooltip:SetText(m.name)
 	GameTooltip:AddLine("seen by " .. who .. " "
 		.. (mins == 0 and "just now" or (mins .. " min ago")) .. ", may be gone", 0.8, 0.8, 0.8)
 	if m.src == "w" then
@@ -534,7 +604,8 @@ local function pin(i)
 	return p
 end
 
-local ICON = { h = "Interface\\Icons\\INV_Misc_Flower_02", o = "Interface\\Icons\\INV_Ore_Copper_01" }
+local ICON = { h = "Interface\\Icons\\INV_Misc_Flower_02", o = "Interface\\Icons\\INV_Ore_Copper_01",
+	u = "Interface\\Icons\\INV_Misc_QuestionMark" }
 
 local updater = CreateFrame("Frame")
 local elapsed = 0

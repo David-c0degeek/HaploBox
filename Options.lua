@@ -66,7 +66,10 @@ local SECTIONS = {
 	{ id = "nodes", title = "Gathering", items = {
 		{ "nodeShare", "toggle", "Send herbs and ore I hover on the minimap or gather to the leader", who = "followers",
 			help = "Only what you yourself hover or gather. Not yet checked in the game." },
+		{ "nodeUnknown", "toggle", "Also send minimap icons whose name the game hides, as \"?\"", who = "followers",
+			help = "WoW Forever hides the name of minimap nodes from addons. This sends only where you hovered such an icon (a herb, ore, a chest...), never what it is. Off by default." },
 		{ "nodeShow", "toggle", "Show the team's herbs and ore on my minimap", who = "leader" },
+		{ "nodeUnknownShow", "toggle", "Unknown \"?\" icons", who = "leader" },
 		{ "nodeHerbs", "toggle", "Herbs", who = "leader" },
 		{ "nodeOre", "toggle", "Ore", who = "leader" },
 		{ "nodeExpiry", "cycle", "Markers last", choices = { "5", "10", "20", "30" },

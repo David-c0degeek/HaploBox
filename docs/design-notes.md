@@ -237,6 +237,15 @@ real cursor is over it. This is the author's report, not Blizzard guidance.
   known node names count: an English Classic Era list, plus names the player
   gathered (`nodeNames`, at most 200). Secret text is never read: in the game WoW
   Forever's minimap tooltip text is secret, so minimap hovers do not work there.
+- **unknown (owner decision, opt-in `nodeUnknown`, off by default):** a secret
+  tooltip with the mouse on the minimap (owner `Minimap`, or the focus API says
+  minimap; without a focus API nothing) is reported as kind `u`, name `?`,
+  source `h`, at the cursor spot after the same visible/circle checks. Only
+  `issecretvalue` touches the text; the per-tick cache keys a secret tooltip by
+  owner and cursor. The leader accepts `u` only with `?` and `h`; a named
+  sighting nearby replaces it, a `?` near a named marker is dropped, a gather
+  removes it and blocks older `?` reports there. `nodeUnknownShow` hides them.
+  Older leaders refuse kind `u` (bad format) until updated.
 - **world:** the same tooltip with the world under the mouse (nil focus or
   `WorldFrame`) reports the player's own position with source `w`, each name at
   most every 30 s. The leader's pin says "near here: where <toon> stood"; an exact
