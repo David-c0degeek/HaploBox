@@ -162,14 +162,21 @@ local function shareTarget()
 	return leader
 end
 
+local function itemName(item) return item:match("|([^|]+)$") or "?" end
+
 local function drain()
 	local item = table.remove(queue, 1)
 	if not item then draining = false return end
 	local leader = shareTarget()
 	if leader then
-		HB.Whisper(leader, item, nil, nil, function()
-			return HB.Norm(shareTarget() or "") == HB.Norm(leader)
-		end)
+		local name = itemName(item)
+		-- "sent" only once the game took it; being queued in Core is not a send
+		HB.Whisper(leader, item,
+			function() HB.debug("node: sending " .. name .. " to " .. leader .. " failed or was dropped") end,
+			function() HB.debug("node: sent " .. name .. " to " .. leader) end,
+			function() return HB.Norm(shareTarget() or "") == HB.Norm(leader) end)
+	else
+		HB.debug("node: dropped " .. itemName(item) .. ", no leader to send to now")
 	end
 	C_Timer.After(1, drain)
 end
@@ -183,6 +190,7 @@ local function report(src, name, kind, mapID, x, y)
 		if t - r.t > DEDUPE then
 			table.remove(recent, i)
 		elseif r.name == name and r.src == src and near(r, obs) then
+			HB.debug("node: " .. name .. " here was already queued within a minute")
 			return
 		end
 	end
@@ -190,6 +198,7 @@ local function report(src, name, kind, mapID, x, y)
 	local msg = string.format("N|%s|%d|%d|%d|%s|%d|%s", kind, mapID,
 		math.floor(x * 10000 + 0.5), math.floor(y * 10000 + 0.5), src, t, name)
 	queue[#queue + 1] = msg
+	HB.debug(string.format("node: queued %s at %.3f, %.3f (map %d)", name, x, y, mapID))
 	while #queue > MAX_QUEUE do table.remove(queue, 1) end
 	if not draining then
 		draining = true
@@ -285,9 +294,15 @@ local function onTooltip()
 	for _, e in ipairs(names) do report("h", e[1], e[2], mapID, x, y) end
 end
 
+-- an error in a tooltip hook would otherwise vanish without a trace
+local function safeTooltip()
+	local ok, err = pcall(onTooltip)
+	if not ok then why("error ", tostring(err):sub(1, 120)) end
+end
+
 if GameTooltip then
-	pcall(GameTooltip.HookScript, GameTooltip, "OnShow", onTooltip)
-	pcall(hooksecurefunc, GameTooltip, "SetText", onTooltip)
+	pcall(GameTooltip.HookScript, GameTooltip, "OnShow", safeTooltip)
+	pcall(hooksecurefunc, GameTooltip, "SetText", safeTooltip)
 end
 
 -- gather: the player's own Herb Gathering or Mining cast, matched by cast GUID
@@ -346,15 +361,17 @@ end
 
 function HB.OnNodeReport(sender, msg)
 	-- kept while hidden too, so a gather seen meanwhile still removes its marker
-	if #msg > 120 or not HB.IAmLeader() then return end
-	if not HB.InGroup(sender) then return end
+	local function drop(reason) HB.debug("node report from " .. sender .. " ignored: " .. reason) end
+	if #msg > 120 then drop("too long") return end
+	if not HB.IAmLeader() then drop("I am not the leader") return end
+	if not HB.InGroup(sender) then drop("not in my group") return end
 	local kind, mapID, x, y, src, t, name = msg:match("^N|([ho])|(%d+)|(%d+)|(%d+)|([hg])|(%d+)|([^|\r\n]+)$")
 	if not kind or not validName(name) then HB.debug("node report from " .. sender .. " ignored: bad format") return end
 	mapID, x, y, t = tonumber(mapID), tonumber(x), tonumber(y), tonumber(t)
-	if mapID < 1 or mapID > 100000 or x > 10000 or y > 10000 then return end
+	if mapID < 1 or mapID > 100000 or x > 10000 or y > 10000 then drop("bad map or position") return end
 	local age = now() - t
 	if age > expirySeconds() or age < -FUTURE_SKEW then
-		HB.debug("node report from " .. sender .. " ignored: too old or in the future")
+		drop("too old or in the future (age " .. age .. " s)")
 		return
 	end
 	local obs = { map = mapID, x = x / 10000, y = y / 10000, name = name, kind = kind, t = t, by = sender, src = src }
@@ -368,9 +385,13 @@ function HB.OnNodeReport(sender, msg)
 			if tb.name == name and near(tb, obs) then tb.t = math.max(tb.t, t) merged = true end
 		end
 		if not merged then tombs[#tombs + 1] = obs end
+		HB.debug("node: " .. name .. " gathered by " .. sender)
 	else
 		for _, tb in ipairs(tombs) do
-			if tb.name == name and near(tb, obs) and tb.t >= t then return end  -- gathered after this was seen
+			if tb.name == name and near(tb, obs) and tb.t >= t then  -- gathered after this was seen
+				drop(name .. " was gathered after this sighting")
+				return
+			end
 		end
 		local merged = false
 		for _, m in ipairs(markers) do
@@ -380,6 +401,10 @@ function HB.OnNodeReport(sender, msg)
 			end
 		end
 		if not merged then markers[#markers + 1] = obs end
+		prune()
+		HB.debug("node: " .. name .. " from " .. sender .. (merged and " merged" or " stored") .. " (" .. #markers .. " markers)")
+		refresh()
+		return
 	end
 	prune()
 	refresh()
