@@ -125,9 +125,10 @@ explicit key press or click on the toon that becomes the leader.
   - Stored HaploBox roles are not read by the resolver. They matter only because
     HaploBox applies them as Blizzard roles (`HB.ApplyRoles`), so both always
     come from the same source.
-- Never follow yourself. A healer that is the leader makes "Follow healer"
-  follow the leader. A follower whose healer follows it falls back to the
-  leader, so there is no follow loop.
+- Never follow yourself. The healer's "Follow healer" follows the leader. On the
+  leader it follows the healer (owner decision, after the game check); a leader
+  that is the healer, or no or several healers, makes it do nothing. A leader
+  and a healer who both press it follow each other: two manual presses.
 - Key bindings live under Keybindings > AddOns > HaploBox, with no keys
   assigned. Existing bindings and the focus target are left alone.
 - **Safe states (from the JCDR fork):** role controls are inert solo, in raids,

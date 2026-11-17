@@ -12,7 +12,8 @@
 --   HaploBoxFollowLeader   /follow <leader>
 --   HaploBoxAssistLeader   assist <leader> (type "assist": also works from the player's
 --                          own macro, where a type "macro" button would be ignored)
---   HaploBoxFollowHealer   /follow <the team's one healer> (the healer follows the leader)
+--   HaploBoxFollowHealer   /follow <the team's one healer> (the healer follows the leader;
+--                          on the leader it follows the healer, owner decision)
 -- They do nothing solo, in a raid, in a group with someone outside the team, and
 -- before the group is confirmed. HaploBox never presses them.
 local HB = HaploBox
@@ -175,7 +176,15 @@ function HB.ResolveRoleControls()
 	local h, why = healer()
 	local me = HB.Norm(HB.UnitIdent("player"))
 	if meLeader then
-		out.followHealer = toLeader  -- the healer follows the leader: the leader following it would loop
+		-- the leader follows the healer when asked (owner decision); a healer that
+		-- also presses its own key follows the leader back: two manual presses
+		if not h then
+			out.followHealer = { reason = why }
+		elseif HB.Norm(h) == me then
+			out.followHealer = { reason = "you are the leader and the healer" }
+		else
+			out.followHealer = { target = h }
+		end
 	elseif not h then
 		out.followHealer = { reason = why }
 	elseif HB.Norm(h) == me or HB.IsLeaderName(h) then

@@ -115,7 +115,24 @@ test("the healer follows the leader; the leader's keys do nothing", function()
 	eq(attrs("HaploBoxFollowHealer").macrotext, "/follow Haplo", "healer follows the leader")
 	asToon("Haplo")
 	eq(attrs("HaploBoxFollowLeader").type, nil, "leader does not follow itself")
-	eq(attrs("HaploBoxFollowHealer").type, nil, "nor itself through the healer key")
+	eq(attrs("HaploBoxAssistLeader").type, nil, "nor assists itself")
+end)
+
+test("the leader's Follow healer key follows the healer; not itself, not with none or two", function()
+	W.groupRoles = { Elya = "HEALER" }
+	asToon("Haplo")
+	eq(attrs("HaploBoxFollowHealer").macrotext, "/follow Elya", "leader follows the healer")
+	W.groupRoles = { Haplo = "HEALER" }
+	asToon("Haplo")
+	eq(attrs("HaploBoxFollowHealer").type, nil, "the leader is the healer")
+	W.groupRoles = {}
+	asToon("Haplo")
+	eq(attrs("HaploBoxFollowHealer").type, nil, "no healer")
+	W.groupRoles = { Elya = "HEALER", Nyra = "HEALER" }
+	asToon("Haplo")
+	eq(attrs("HaploBoxFollowHealer").type, nil, "two healers")
+	HB.PrintRoleControls()
+	eq(printedMatching("2 healer roles"), 1, "reason shown")
 end)
 
 test("no healer or two healers: Follow healer does nothing and says why", function()
