@@ -152,6 +152,12 @@ explicit key press or click on the toon that becomes the leader.
   work in that repository.
 - **Built (offline, 2026-11-17):** `Lead.lua` has the handover and the three
   role controls as described above.
+- **Crown (owner request):** after an accepted handover, the toon holding the
+  party lead calls `C_PartyInfo.PromoteToLeader(<party token>, true)` (the
+  unit popup's own call); two seconds later, if the crown has not moved and no
+  newer handover came, it asks the player to promote by hand. A new party
+  leader runs the loot check (`PARTY_LEADER_CHANGED`). Not yet checked: whether
+  WoW Forever allows the call without a click.
 - **Lead button (owner request):** a plain (not secure) button on every team
   member that is not the leader, in a team-only party; a click runs
   `HB.TakeLead()`, also in combat. The followers' secure buttons update when

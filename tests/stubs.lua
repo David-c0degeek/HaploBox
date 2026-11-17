@@ -511,7 +511,15 @@ function GetQuestID() return 42 end
 -- loot: W.loot is the method (Enum value); W.lootSets lists every change asked for;
 -- W.lootRefused makes the server ignore changes; W.noLootApi removes both calls.
 W.loot, W.lootSets = 0, {}
+-- W.promotes lists PromoteToLeader calls; W.promoteError throws, W.promoteIgnored
+-- does nothing (a client that wants a click)
+W.promotes = {}
 C_PartyInfo = {
+	PromoteToLeader = function(unit, exact)
+		if W.promoteError then error("protected") end
+		W.promotes[#W.promotes + 1] = { unit = unit, exact = exact }
+		if not W.promoteIgnored then W.partyLeader = unitName(unit) end
+	end,
 	LeaveParty = function() W.left = W.left + 1 end,
 	GetLootMethod = function() if not W.noLootApi then return W.loot end end,
 	SetLootMethod = function(m)

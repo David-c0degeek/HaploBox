@@ -1255,6 +1255,12 @@ function handlers.PARTY_LOOT_METHOD_CHANGED()
 	if IsInGroup() then HB.ScheduleLootCheck(1) end
 end
 
+-- the crown moved (for example handed over with the HaploBox lead): the new party
+-- leader runs its loot check
+function handlers.PARTY_LEADER_CHANGED()
+	if IsInGroup() then HB.ScheduleLootCheck(1) end
+end
+
 function handlers.GROUP_ROSTER_UPDATE()
 	-- Follow queries and roles only when someone joins: every roster update resets
 	-- other addons' party state. The loot check is safe to repeat (see checkLoot).

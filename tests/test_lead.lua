@@ -270,3 +270,75 @@ test("the Lead button can be turned off", function()
 	HB.SetOption("leadButton", true)
 	eq(leadShown(), true, "on")
 end)
+
+-- ---------------------------------------------------------------- crown
+local function handover(from)
+	local e = (HaploBoxTeam.leaderEpoch or 0) + 10
+	addon(from, "H|" .. e .. "|" .. HB.RosterHash({ "Haplo", "Elya", "Nyra" }), "PARTY")
+end
+
+test("the crown holder hands the party lead to the toon that took over", function()
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	handover("Nyra")
+	eq(HaploBoxTeam.leader, "Nyra", "HaploBox leader")
+	eq(#W.promotes, 1, "promoted once")
+	eq(W.promotes[1].unit, "party2", "by its party token")
+	eq(W.promotes[1].exact, true, "exact match")
+	advance(3)
+	eq(printedMatching("by hand"), 0, "no prompt when it worked")
+end)
+
+test("only the crown holder acts, and only for an accepted handover in a team-only party", function()
+	asToon("Elya")
+	W.partyLeader = "Haplo"
+	handover("Nyra")
+	eq(#W.promotes, 0, "not the crown holder")
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	HaploBoxTeam.leaderEpoch = 1000
+	addon("Nyra", "H|5|" .. HB.RosterHash({ "Haplo", "Elya", "Nyra" }), "PARTY")  -- older than the current leader
+	addon("Nyra", "H|" .. (HaploBoxTeam.leaderEpoch + 10) .. "|" .. HB.RosterHash({ "Nyra", "Other" }), "PARTY")
+	eq(#W.promotes, 0, "refused handovers")
+	party("Elya", "Nyra", "Mallory")
+	fire("GROUP_ROSTER_UPDATE") advance(1)
+	handover("Nyra")
+	eq(#W.promotes, 0, "someone outside the team")
+end)
+
+test("a client that refuses or ignores it asks for a click; a newer handover cancels the ask", function()
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	W.promoteError = true
+	handover("Nyra")
+	advance(3)
+	eq(printedMatching("give the party lead to .*Nyra.* by hand"), 1, "asked")
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	W.promoteIgnored = true
+	handover("Nyra")
+	advance(3)
+	eq(printedMatching("by hand"), 1, "a silent no-op is caught too")
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	W.promoteIgnored = true
+	handover("Nyra")
+	advance(1)
+	handover("Elya")
+	advance(3)
+	eq(printedMatching("by hand.*"), 1, "only the newest handover is asked about")
+	eq(printedMatching("Nyra.* by hand"), 0, "the old one is not")
+end)
+
+test("a new party leader runs the loot check", function()
+	asToon("Nyra")
+	W.partyLeader = "Haplo"
+	W.loot = 3  -- group loot
+	HB.TakeLead()
+	advance(3)
+	eq(W.loot, 3, "not the party leader yet: no change")
+	W.partyLeader = "Nyra"
+	fire("PARTY_LEADER_CHANGED")
+	advance(3)
+	eq(W.loot, 0, "the crown arrived: free for all in a team-only party")
+end)

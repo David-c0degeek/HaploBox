@@ -84,6 +84,40 @@ function HB.TakeLead()
 	HB.print("you are the leader now; the team keeps its order and roles")
 end
 
+-- The toon holding the game's party lead (the crown) passes it to a toon whose
+-- handover it just accepted, so loot and the crown match the HaploBox leader. Only
+-- the crown holder acts, in a party of only the team, and only towards the one
+-- party member with that name. The client may refuse it (it can need a click): if
+-- the crown has not moved two seconds later, the old leader is asked to do it.
+local crownSeq = 0
+local function handCrown(sender)
+	crownSeq = crownSeq + 1  -- a newer handover makes an older check obsolete
+	local seq = crownSeq
+	if not (UnitIsGroupLeader and UnitIsGroupLeader("player")) then return end
+	if IsInRaid() or HB.GroupStatus() ~= "team" then return end
+	local key, token = HB.Norm(sender), nil
+	for i = 1, 4 do
+		local u = "party" .. i
+		if UnitExists(u) and HB.Norm(HB.UnitIdent(u)) == key then
+			if token then return end  -- two fit: do nothing
+			token = u
+		end
+	end
+	if not token then return end
+	local promote = (C_PartyInfo and C_PartyInfo.PromoteToLeader) or PromoteToLeader
+	if type(promote) == "function" then pcall(promote, token, true) end
+	C_Timer.After(2, function()
+		if seq ~= crownSeq or not HB.IsLeaderName(sender) then return end
+		-- the new leader left, or its party slot is somebody else now: nothing to ask
+		if not (UnitExists(token) and HB.Norm(HB.UnitIdent(token)) == key) then return end
+		if UnitIsGroupLeader(token) then return end
+		if not UnitIsGroupLeader("player") then return end  -- the crown went elsewhere meanwhile
+		HB.print("give the party lead to |cffffff00" .. sender:gsub("%-.*$", "")
+			.. "|r by hand: right-click its portrait, Promote to Party Leader")
+	end)
+end
+HB.HandCrown = handCrown
+
 function HB.OnHandover(sender, msg)
 	local epoch, hash = msg:match("^H|(%d+)|(%d+)$")
 	epoch = tonumber(epoch)
@@ -102,9 +136,10 @@ function HB.OnHandover(sender, msg)
 		return
 	end
 	record(epoch, sender)
-	if HB.IsLeaderName(sender) then return end
+	if HB.IsLeaderName(sender) then handCrown(sender) return end
 	HB.SetLeaderRaw(sender)
 	HB.RefreshTeam()
+	handCrown(sender)
 	HB.print("|cffffff00" .. sender:gsub("%-.*$", "") .. "|r is the leader now")
 end
 
