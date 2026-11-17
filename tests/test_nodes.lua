@@ -60,6 +60,35 @@ test("WoW Forever: a tooltip anchored to UIParent counts only while the cursor i
 	eq(#reports(), 2, "SetText path")
 end)
 
+test("WoW Forever: no IsMouseOver on the minimap, the circle decides", function()
+	asFollower({ debug = true })
+	Minimap.IsMouseOver = false   -- missing (a plain value, so the stub's auto methods do not step in)
+	MouseIsOver = nil
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 1, "reported from inside the circle")
+	eq(printedMatching("the minimap circle decides"), 1, "said once")
+	hoverMinimap("Peacebloom", 200, 0, "UIParent")
+	hoverMinimap("Silverleaf", 65, 65, "UIParent")
+	advance(3)
+	eq(#reports(), 1, "outside the circle: nothing")
+	eq(printedMatching("the minimap circle decides"), 1, "still once")
+end)
+
+test("the global MouseIsOver is used when the method is missing; a failing method falls back", function()
+	asFollower()
+	Minimap.IsMouseOver = false
+	MouseIsOver = function() return false end
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 0, "a working test that says no is obeyed")
+	MouseIsOver = nil
+	Minimap.IsMouseOver = function() error("not here") end
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 1, "a failing method falls back to the circle")
+end)
+
 test("debug says why a minimap hover was dropped, without spam", function()
 	asFollower({ debug = true })
 	hoverMinimap("Hogger", 30, 0, "UIParent")

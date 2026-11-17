@@ -207,6 +207,7 @@ end
 
 -- debug lines for minimap hovers that were dropped, each at most every 5 seconds
 local lastWhy = {}
+local noMouseOverSaid = false
 local function why(text)
 	if lastWhy[text] and GetTime() - lastWhy[text] < 5 then return end
 	lastWhy[text] = GetTime()
@@ -221,7 +222,22 @@ local function onTooltip()
 	local fromMinimap = owner == Minimap
 	if not fromMinimap then
 		if owner ~= nil and owner ~= UIParent then return end
-		if not (Minimap.IsMouseOver and Minimap:IsMouseOver()) then return end
+		-- the client's own mouse-over test where it has one (WoW Forever's minimap has
+		-- no IsMouseOver); a call that fails falls through to the circle check below
+		local over
+		if type(Minimap.IsMouseOver) == "function" then
+			local ok, v = pcall(Minimap.IsMouseOver, Minimap)
+			if ok then over = v end
+		end
+		if over == nil and type(MouseIsOver) == "function" then
+			local ok, v = pcall(MouseIsOver, Minimap)
+			if ok then over = v end
+		end
+		if over ~= nil and not over then return end
+		if over == nil and not noMouseOverSaid then
+			noMouseOverSaid = true
+			HB.debug("minimap hover: no mouse-over test on this client, the minimap circle decides")
+		end
 	end
 	if not GetCursorPosition then return end
 	local cx, cy = GetCursorPosition()
