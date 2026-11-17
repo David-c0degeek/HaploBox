@@ -42,6 +42,36 @@ test("hovering a known node on the minimap reports it to the leader only", funct
 	eq(#sentMatching("^N|", "PARTY"), 0, "never to the group")
 end)
 
+test("WoW Forever: a tooltip anchored to UIParent counts only while the cursor is on the round minimap", function()
+	asFollower()
+	W.minimapScale = 1.25
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	advance(2)
+	eq(#reports(), 1, "reported")
+	assert(reports()[1].msg:find("^N|h|1429|5333|5000|h|"), reports()[1].msg)
+	hoverMinimap("Peacebloom", 200, 0, "UIParent")    -- off the minimap
+	hoverMinimap("Silverleaf", 65, 65, "UIParent")    -- in the frame's corner, outside the circle
+	local other = CreateFrame("Button", "SomeButton")
+	hoverMinimap("Mageroyal", 10, 0, other)          -- a minimap button's own tooltip
+	advance(3)
+	eq(#reports(), 1, "none of those")
+	hoverMinimap("Briarthorn", 0, 30, "UIParent", true)  -- the text arrives through SetText
+	advance(2)
+	eq(#reports(), 2, "SetText path")
+end)
+
+test("debug says why a minimap hover was dropped, without spam", function()
+	asFollower({ debug = true })
+	hoverMinimap("Hogger", 30, 0, "UIParent")
+	hoverMinimap("Hogger", 30, 0, "UIParent")
+	eq(printedMatching("no known herb or ore"), 1, "once")
+	W.map = nil
+	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	eq(printedMatching("no map position"), 1, "no position")
+	hoverMinimap("Earthroot", 200, 0, "UIParent")  -- not on the minimap: not a minimap hover
+	eq(printedMatching("minimap hover"), 2, "nothing for unrelated tooltips")
+end)
+
 test("a rotating minimap is turned back to north", function()
 	asFollower()
 	W.rotate, W.facing = true, math.pi / 2  -- facing west: up on the minimap is west

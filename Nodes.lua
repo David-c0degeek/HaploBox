@@ -205,24 +205,46 @@ local function stripEscapes(s)
 	return (s:gsub("|T.-|t", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
+-- debug lines for minimap hovers that were dropped, each at most every 5 seconds
+local lastWhy = {}
+local function why(text)
+	if lastWhy[text] and GetTime() - lastWhy[text] < 5 then return end
+	lastWhy[text] = GetTime()
+	HB.debug("minimap hover: " .. text)
+end
+
 local function onTooltip()
-	if not (GameTooltip and Minimap) or GameTooltip:GetOwner() ~= Minimap then return end
-	if not shareTarget() then return end
+	if not (GameTooltip and Minimap) then return end
+	local owner = GameTooltip:GetOwner()
+	-- upstream clients own the tooltip by the minimap; WoW Forever anchors it to
+	-- UIParent, so that only counts while the cursor is really on the minimap
+	local fromMinimap = owner == Minimap
+	if not fromMinimap then
+		if owner ~= nil and owner ~= UIParent then return end
+		if not (Minimap.IsMouseOver and Minimap:IsMouseOver()) then return end
+	end
+	if not GetCursorPosition then return end
+	local cx, cy = GetCursorPosition()
+	local scale = Minimap:GetEffectiveScale()
+	local mx, my = Minimap:GetCenter()
+	if not (cx and mx and scale and scale > 0) then return end
+	local sx, sy = cx / scale - mx, cy / scale - my
+	if not fromMinimap then
+		local r = (Minimap:GetWidth() or 0) / 2
+		if sx * sx + sy * sy > r * r then return end  -- a corner of the frame, outside the round map
+	end
 	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
 	if type(line) ~= "string" or HB.secret(line) then return end
+	if not shareTarget() then why("not sharing now (setting, group or leader)") return end
 	local names = {}
 	for part in stripEscapes(line):gmatch("[^\n]+") do
 		local n = part:match("^%s*(.-)%s*$")
 		local k = kindOf(n)
 		if k then names[#names + 1] = { n, k } end
 	end
-	if #names == 0 or not GetCursorPosition then return end
-	local cx, cy = GetCursorPosition()
-	local scale = Minimap:GetEffectiveScale()
-	local mx, my = Minimap:GetCenter()
-	if not (cx and mx and scale and scale > 0) then return end
-	local mapID, x, y = offsetToMap(cx / scale - mx, cy / scale - my)
-	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then return end
+	if #names == 0 then why("no known herb or ore in \"" .. stripEscapes(line):sub(1, 40) .. "\"") return end
+	local mapID, x, y = offsetToMap(sx, sy)
+	if not mapID or x < 0 or x > 1 or y < 0 or y > 1 then why("no map position here") return end
 	for _, e in ipairs(names) do report("h", e[1], e[2], mapID, x, y) end
 end
 

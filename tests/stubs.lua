@@ -392,11 +392,25 @@ C_Map = {
 	end,
 }
 -- hover: the game shows its minimap tooltip while the player's cursor is on a node
-function hoverMinimap(text, px, py)
-	W.cursorX, W.cursorY = Minimap.cx + px, Minimap.cy + py
-	GameTooltip.owner = Minimap
+-- px, py: offset from the minimap centre in its own pixels; the cursor is in screen
+-- pixels (times the effective scale). owner: Minimap by default; "UIParent" as on
+-- WoW Forever. viaSetText: the tooltip text arrives through SetText, not OnShow.
+Minimap.GetEffectiveScale = function() return W.minimapScale or 1 end
+Minimap.IsMouseOver = function()
+	local s = W.minimapScale or 1
+	local x, y = (W.cursorX or 0) / s, (W.cursorY or 0) / s
+	return math.abs(x - Minimap.cx) <= Minimap.width / 2 and math.abs(y - Minimap.cy) <= Minimap.height / 2
+end
+function hoverMinimap(text, px, py, owner, viaSetText)
+	local s = W.minimapScale or 1
+	W.cursorX, W.cursorY = (Minimap.cx + px) * s, (Minimap.cy + py) * s
+	GameTooltip.owner = owner == "UIParent" and UIParent or owner or Minimap
 	GameTooltipTextLeft1.text = text
-	for _, fn in ipairs((GameTooltip.hooks or {}).OnShow or {}) do fn(GameTooltip) end
+	if viaSetText then
+		GameTooltip:SetText(text)
+	else
+		for _, fn in ipairs((GameTooltip.hooks or {}).OnShow or {}) do fn(GameTooltip) end
+	end
 end
 function fire(e, ...)
 	if e == "GROUP_ROSTER_UPDATE" or e == "UNIT_NAME_UPDATE" then
