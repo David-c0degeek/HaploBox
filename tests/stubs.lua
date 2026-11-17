@@ -396,6 +396,8 @@ C_Map = {
 -- pixels (times the effective scale). owner: Minimap by default; "UIParent" as on
 -- WoW Forever. viaSetText: the tooltip text arrives through SetText, not OnShow.
 Minimap.GetEffectiveScale = function() return W.minimapScale or 1 end
+-- visible unless it or a parent is hidden (W.minimapParentHidden)
+Minimap.IsVisible = function() return Minimap.shown ~= false and not W.minimapParentHidden end
 Minimap.IsMouseOver = function()
 	local s = W.minimapScale or 1
 	local x, y = (W.cursorX or 0) / s, (W.cursorY or 0) / s

@@ -60,33 +60,33 @@ test("WoW Forever: a tooltip anchored to UIParent counts only while the cursor i
 	eq(#reports(), 2, "SetText path")
 end)
 
-test("WoW Forever: no IsMouseOver on the minimap, the circle decides", function()
-	asFollower({ debug = true })
-	Minimap.IsMouseOver = false   -- missing (a plain value, so the stub's auto methods do not step in)
-	MouseIsOver = nil
-	hoverMinimap("Earthroot", 30, 0, "UIParent")
+test("WoW Forever: a mouse-over test that wrongly says no cannot stop a hover inside the circle", function()
+	asFollower()
+	Minimap.IsMouseOver = function() return false end  -- as seen in the game: false at dx 4, dy -1
+	MouseIsOver = function() return false end
+	hoverMinimap("Earthroot", 4, -1, "UIParent")
 	advance(2)
-	eq(#reports(), 1, "reported from inside the circle")
-	eq(printedMatching("the minimap circle decides"), 1, "said once")
+	eq(#reports(), 1, "reported")
 	hoverMinimap("Peacebloom", 200, 0, "UIParent")
 	hoverMinimap("Silverleaf", 65, 65, "UIParent")
 	advance(3)
 	eq(#reports(), 1, "outside the circle: nothing")
-	eq(printedMatching("the minimap circle decides"), 1, "still once")
 end)
 
-test("the global MouseIsOver is used when the method is missing; a failing method falls back", function()
-	asFollower()
-	Minimap.IsMouseOver = false
-	MouseIsOver = function() return false end
+test("a hidden minimap, or one under a hidden parent, never counts", function()
+	asFollower({ debug = true })
+	Minimap:Hide()
 	hoverMinimap("Earthroot", 30, 0, "UIParent")
+	Minimap:Show()
+	W.minimapParentHidden = true
+	hoverMinimap("Peacebloom", 0, 30, "UIParent")
+	advance(3)
+	eq(#reports(), 0, "nothing")
+	eq(printedMatching("the minimap is hidden"), 1, "said, once per 5 s")
+	W.minimapParentHidden = false
+	hoverMinimap("Peacebloom", 0, 30, "UIParent")
 	advance(2)
-	eq(#reports(), 0, "a working test that says no is obeyed")
-	MouseIsOver = nil
-	Minimap.IsMouseOver = function() error("not here") end
-	hoverMinimap("Earthroot", 30, 0, "UIParent")
-	advance(2)
-	eq(#reports(), 1, "a failing method falls back to the circle")
+	eq(#reports(), 1, "visible again")
 end)
 
 test("debug says why a minimap hover was dropped, without spam", function()
@@ -102,9 +102,9 @@ test("debug says why a minimap hover was dropped, without spam", function()
 	hoverMinimap("Earthroot", 65, 65, "UIParent")    -- the frame's corner: outside the circle
 	hoverMinimap("Earthroot", 66, 64, "UIParent")
 	eq(printedMatching("outside the minimap circle %(dx 65, dy 65, radius 70%)"), 1, "outside, with offsets, once")
-	Minimap.IsMouseOver = function() return false end
+	Minimap:Hide()
 	hoverMinimap("Earthroot", 30, 0, "UIParent")
-	eq(printedMatching("not on the minimap %(Minimap:IsMouseOver%)"), 1, "the client's test said no")
+	eq(printedMatching("the minimap is hidden %(Earthroot%)"), 1, "hidden, named")
 end)
 
 test("WoW Forever's marker before a node name is removed; learned names keep every letter", function()

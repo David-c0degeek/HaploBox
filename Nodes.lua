@@ -208,7 +208,6 @@ end
 -- debug lines for minimap hovers that were dropped: each reason at most every 5
 -- seconds (the details after it do not count as a new reason)
 local lastWhy = {}
-local noMouseOverSaid = false
 local function why(reason, detail)
 	if lastWhy[reason] and GetTime() - lastWhy[reason] < 5 then return end
 	lastWhy[reason] = GetTime()
@@ -261,22 +260,11 @@ local function onTooltip()
 	end
 	local label = " (" .. names[1][1] .. ")"
 	if not fromMinimap then
-		-- the client's own mouse-over test where it has one (WoW Forever's minimap has
-		-- no IsMouseOver); a call that fails falls through to the circle check below
-		local over, which
-		if type(Minimap.IsMouseOver) == "function" then
-			local ok, v = pcall(Minimap.IsMouseOver, Minimap)
-			if ok then over, which = v, "Minimap:IsMouseOver" end
-		end
-		if over == nil and type(MouseIsOver) == "function" then
-			local ok, v = pcall(MouseIsOver, Minimap)
-			if ok then over, which = v, "MouseIsOver" end
-		end
-		if over ~= nil and not over then why("the cursor is not on the minimap", " (" .. which .. ")" .. label) return end
-		if over == nil and not noMouseOverSaid then
-			noMouseOverSaid = true
-			HB.debug("minimap hover: no mouse-over test on this client, the minimap circle decides")
-		end
+		-- WoW Forever's Minimap:IsMouseOver() answers false even with the cursor on
+		-- the minimap, so it is not asked: the visible round minimap under the cursor
+		-- decides (the circle check below)
+		local ok, visible = pcall(Minimap.IsVisible, Minimap)
+		if not (ok and visible) then why("the minimap is hidden", label) return end
 	end
 	if not GetCursorPosition then why("no cursor position", label) return end
 	local cx, cy = GetCursorPosition()
