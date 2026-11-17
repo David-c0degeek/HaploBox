@@ -72,6 +72,11 @@ local DEFAULTS = {
 	bagFullAlert        = true,   -- leader: message when a toon's bags are full
 	forwardWhispers     = true,   -- followers: forward whispers from outside the team to the leader
 	relayReplies        = true,   -- followers: pass the leader's replies on to the last whisperer
+	nodeShare           = true,   -- followers: send gathering nodes I hover or gather to the leader (#5)
+	nodeShow            = true,   -- leader: show the team's gathering nodes on the minimap
+	nodeHerbs           = true,   -- leader: herbs among them
+	nodeOre             = true,   -- leader: ore among them
+	nodeExpiry          = "10",   -- leader: minutes a marker stays
 	debug               = false,
 }
 
@@ -1471,10 +1476,10 @@ end
 local POLICY = {
 	M = "offer", R = "team", F = "team", T = "team", S = "team", E = "team",
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
-	U = "leader", A = "team", Q = "leader", B = "team", H = "team",
+	U = "leader", A = "team", Q = "leader", B = "team", H = "team", N = "team",
 }
-local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true }
-local WHISPER_ONLY = { U = true, A = true, B = true }  -- shared UI settings: never on a group channel
+local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true, N = true }
+local WHISPER_ONLY = { U = true, A = true, B = true, N = true }  -- shared UI settings: never on a group channel
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
 local function accepted(kind, channel, sender)
@@ -1505,6 +1510,7 @@ function handlers.CHAT_MSG_ADDON(prefix, msg, channel, sender)
 	if kind == "H" then if HB.OnHandover then HB.OnHandover(sender, msg) end return end
 	if kind == "Q" then if HB.OnQuestAbandon then HB.OnQuestAbandon(sender, msg) end return end
 	if kind == "B" then if HB.OnAbandonResult then HB.OnAbandonResult(sender, msg) end return end
+	if kind == "N" then if HB.OnNodeReport then HB.OnNodeReport(sender, msg) end return end
 	if kind == "S" then onStats(sender, select(2, strsplit("|", msg))) return end
 	if kind == "P" then onLeaderFlight(sender, msg:sub(3)) return end
 	local _, code, arg = strsplit("|", msg)
@@ -1691,6 +1697,7 @@ local CHOICES = {
 	teamFrame = { auto = true, show = true, hide = true },
 	autoShareQuests = { leader = true, all = true, off = true },
 	teamView = { main = true, mini = true },
+	nodeExpiry = { ["5"] = true, ["10"] = true, ["20"] = true, ["30"] = true },
 }
 HB.SCALE_MIN, HB.SCALE_MAX = 0.5, 2
 local FRAME_KEYS = {
@@ -1727,6 +1734,8 @@ function HB.SetOption(key, value)
 	if key == "hideQuestTracker" then HB.ApplyQuestTracker() end
 	if key == "autoFFA" and value then HB.ScheduleLootCheck(0.5) end
 	if key == "autoPartyRole" and value and HB.ApplyRoles then HB.ApplyRoles() end
+	if key == "nodeShare" and not value and HB.ClearNodeQueue then HB.ClearNodeQueue() end
+	if key:match("^node") and HB.RefreshNodePins then HB.RefreshNodePins() end
 	if HB.RefreshSettingsViews then HB.RefreshSettingsViews() end
 	return value
 end
@@ -1760,6 +1769,7 @@ local function help()
 	print_("  /hb accept - accept the team offered by a new leader (or click Accept in the popup)")
 	print_("  /hb lead - take over as leader; the team keeps its order and roles")
 	print_("  /hb controls - what the Follow leader, Assist leader and Follow healer keys do now")
+	print_("  /hb nodes [clear] - gathering nodes the followers found (not yet checked in the game)")
 	print_("  /hb cast add harm|help <spell>, list, remove <slot>, on, off - spells that cast at the leader's target (not yet checked in the game)")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
@@ -1796,6 +1806,8 @@ SlashCmdList.HAPLOBOX = function(input)
 		HB.PrintRoleControls()
 	elseif cmd == "cast" then
 		HB.CastCommand(rest)
+	elseif cmd == "nodes" then
+		HB.NodesCommand(rest)
 	elseif cmd == "role" then
 		HB.SetMyRole(rest:lower())
 	elseif cmd == "team" then

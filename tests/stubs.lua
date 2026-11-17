@@ -112,7 +112,8 @@ C_UnitAuras = {
 		return t and t[i]
 	end,
 }
-local SPELLS = { [139] = "Renew", [774] = "Rejuvenation", [8936] = "Regrowth" }
+local SPELLS = { [139] = "Renew", [774] = "Rejuvenation", [8936] = "Regrowth", [2366] = "Herb Gathering",
+	[2575] = "Mining", [133] = "Fireball" }
 C_Spell = { GetSpellName = function(id) return SPELLS[id] end }
 WOW_PROJECT_CLASSIC, WOW_PROJECT_MAINLINE = 2, 1
 WOW_PROJECT_ID = 2
@@ -336,6 +337,50 @@ function CreateFrame(_, name, parent, template)
 	return newFrame(name)
 end
 UIParent = newFrame()
+frameMethods.HookScript = function(self, k, fn)
+	self.hooks = self.hooks or {}
+	self.hooks[k] = self.hooks[k] or {}
+	table.insert(self.hooks[k], fn)
+end
+frameMethods.GetCenter = function(self) return self.cx, self.cy end
+frameMethods.GetOwner = function(self) return self.owner end
+frameMethods.SetOwner = function(self, o) self.owner = o end
+frameMethods.SetTexture = function(self, t) self.texture = t end
+frameMethods.AddLine = function(self, t) self.lines = self.lines or {} table.insert(self.lines, t) end
+
+-- minimap and map position (#5): W.map = { id, x, y, w, h }, W.zoom, W.rotate, W.facing
+Minimap = newFrame("Minimap")
+Minimap.width, Minimap.height, Minimap.cx, Minimap.cy = 140, 140, 1000, 700
+Minimap.GetZoom = function() return W.zoom or 0 end
+GameTooltip = newFrame("GameTooltip")
+GameTooltipTextLeft1 = newFrame("GameTooltipTextLeft1")
+function GetCursorPosition() return W.cursorX or 0, W.cursorY or 0 end
+function GetServerTime() return math.floor(W.now) + 1000000 end
+function GetCVar(k)
+	if k == "rotateMinimap" then return W.rotate and "1" or "0" end
+	if k == "minimapZoom" then return tostring(W.outZoom or 0) end
+	if k == "minimapInsideZoom" then return tostring(W.inZoom or 0) end
+end
+function GetPlayerFacing() return W.facing or 0 end
+function IsIndoors() return W.indoors or false end
+function IsInInstance() return W.instance or false end
+function CreateVector2D(x, y) return { x = x, y = y } end
+C_Map = {
+	GetBestMapForUnit = function() return W.map and W.map.id end,
+	GetPlayerMapPosition = function(id) if W.map and W.map.id == id then return { x = W.map.x, y = W.map.y } end end,
+	GetWorldPosFromMapPos = function(id, v)
+		if not (W.map and W.map.id == id) then return nil end
+		-- world x runs north (down the map is smaller x), world y runs west
+		return 0, { x = -v.y * W.map.h, y = -v.x * W.map.w }
+	end,
+}
+-- hover: the game shows its minimap tooltip while the player's cursor is on a node
+function hoverMinimap(text, px, py)
+	W.cursorX, W.cursorY = Minimap.cx + px, Minimap.cy + py
+	GameTooltip.owner = Minimap
+	GameTooltipTextLeft1.text = text
+	for _, fn in ipairs((GameTooltip.hooks or {}).OnShow or {}) do fn(GameTooltip) end
+end
 function fire(e, ...)
 	if e == "GROUP_ROSTER_UPDATE" or e == "UNIT_NAME_UPDATE" then
 		evalStates()

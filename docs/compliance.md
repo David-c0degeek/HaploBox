@@ -75,12 +75,14 @@ Mixed group: what changes when someone outside the team is in the group.
 | Abandon quest on team | Leader abandons a quest, then confirms a popup | Followers abandon the same quest | Leader's Yes | Followers act only on their stored leader's message, only for a quest they have; follower setting turns it off | Owner-requested 2026-11-16 |
 | Take over as leader | A key press or /hb lead on the new leader | The leader name on every toon with the same team | That toon's own press | Sender must be a team member in the group with the same team; newest wins; roles and order unchanged | Leader name only |
 | Follow / assist keys | The player's key press | /follow or /assist by name | The player's own press | Set out of combat; nothing solo, in raids, in mixed groups or on the leader | Never pressed by HaploBox |
+| Gathering nodes | The player's own hover over the minimap, or own gathering | A marker on the leader's minimap | Nothing: display only | Reads the game's tooltip only while the player's cursor is on it; no cursor movement, scanning, pixels or memory; whisper to the leader only | Not yet checked in the game |
 | Assist-or-cast spells | The player's own key press | Cast at the leader's target, or a heal on the leader | The player's own press | Off after login and in solo, raid, mixed groups and on the leader; secure code disarms damage spells on any group change in combat; no macro edits | Not yet checked in the game |
 | Quest tracker hiding | Option | Hide Blizzard's tracker | None | Not affected | Kept |
 
-Not built and not approved by this review: leader handover by window switch
-(#4), node sharing (#5), solo-safe assist macros (#8). Their issues carry the
-research. UI-only work (#6, #9 to #14) does not depend on these decisions.
+Built offline but not yet checked in the game: leader handover and role keys
+(#4), node sharing (#5) and assist-or-cast spells (#8). Each is listed above and
+stays unproven until the in-game checks in docs/design-notes.md pass; their
+issues stay open until then. UI-only work (#6, #9 to #14) does not depend on these decisions.
 
 ## Trusted roster (#7)
 

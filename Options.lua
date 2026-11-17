@@ -56,6 +56,16 @@ local SECTIONS = {
 		{ "bagFullAlert", "toggle", "Message when a character's bags are full", who = "leader" },
 		{ "testAlert", "action", "Test leader alert", run = function() SlashCmdList.HAPLOBOX("test alert") end },
 	} },
+	{ id = "nodes", title = "Gathering", items = {
+		{ "nodeShare", "toggle", "Send herbs and ore I hover on the minimap or gather to the leader", who = "followers",
+			help = "Only what you yourself hover or gather. Not yet checked in the game." },
+		{ "nodeShow", "toggle", "Show the team's herbs and ore on my minimap", who = "leader" },
+		{ "nodeHerbs", "toggle", "Herbs", who = "leader" },
+		{ "nodeOre", "toggle", "Ore", who = "leader" },
+		{ "nodeExpiry", "cycle", "Markers last", choices = { "5", "10", "20", "30" },
+			text = { ["5"] = "5 min", ["10"] = "10 min", ["20"] = "20 min", ["30"] = "30 min" }, who = "leader" },
+		{ "clearNodes", "action", "Clear the markers", run = function() HB.ClearNodeMarkers() end },
+	} },
 	{ id = "group", title = "Group & loot", items = {
 		{ "autoAcceptInvite", "toggle", "Accept group invites from the leader", who = "followers" },
 		{ "autoFFA", "toggle", "Free-for-all loot for the team only, group loot when someone else joins", who = "leader" },

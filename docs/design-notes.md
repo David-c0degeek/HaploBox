@@ -172,6 +172,34 @@ real cursor is over it. This is the author's report, not Blizzard guidance.
 - **Settings:** share on/off on each follower (off stops sending at once), and
   show on/off, herbs and ore, and expiry on the leader.
 
+### Built (offline, 2026-11-17): `Nodes.lua`
+
+- **hover:** a read-only hook on `GameTooltip` (OnShow and SetText) while its owner
+  is `Minimap`. Only known node names count: an English Classic Era list, plus
+  names the player gathered (`nodeNames`, at most 200).
+- **gather:** `UNIT_SPELLCAST_SENT` stores the cast GUID and target name for Herb
+  Gathering or Mining. Only `UNIT_SPELLCAST_SUCCEEDED` with the same GUID reports
+  and learns. A failed or interrupted cast with that GUID, or a new cast, clears it.
+- **Report:** `N|h or o|mapID|x|y|h or g|server time|name`, x and y in 1/10000, as
+  an addon whisper (whisper only) to the current leader. Queued at one per second,
+  at most 10. The same observation is sent once a minute. The leader, team and
+  sharing are checked again when each message goes out.
+- **Leader:**
+  - Accepts reports only from team members in its group, younger than the expiry
+    and at most 60 s in the future. It merges the same name within 0.003 map units
+    and keeps the newest time.
+  - A gather removes the marker and leaves a tombstone, so an older hover that
+    arrives late cannot bring the marker back.
+  - At most 100 markers. Pins on the minimap are placed with the same zoom and
+    rotation maths and hidden outside its radius.
+- **verify:**
+  - the minimap tooltip text for nodes (one line, names split by newlines);
+  - the zoom table (yards per zoom level, indoor and outdoor);
+  - `GetPlayerFacing` with a rotating minimap;
+  - `C_Map.GetWorldPosFromMapPos` for map size;
+  - the accuracy of the position;
+  - the event arguments for the cast GUID on Forever and Classic Era.
+
 ### Fallback
 
 If hover data is not available, the only option is a marker the player places by

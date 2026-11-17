@@ -15,4 +15,5 @@ Share.lua
 Quests.lua
 Lead.lua
 Cast.lua
+Nodes.lua
 Options.lua
