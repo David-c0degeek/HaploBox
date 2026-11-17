@@ -230,6 +230,8 @@ real cursor is over it. This is the author's report, not Blizzard guidance.
 
 ### Built (offline, 2026-11-17): `Nodes.lua`
 
+Turned off for now (owner, 2026-11-17): `HB.NODES_ON = false` in Core.lua makes Nodes.lua stop at load, hides the Gathering settings and makes `/hb nodes` say it is off. Saved node settings are kept. `tests/test_nodes.lua` turns it on to keep the code tested.
+
 - **hover:** a read-only hook on `GameTooltip` (OnShow, SetText, and OnUpdate every
   0.2 s, since WoW Forever changes the shown text natively). Owner `Minimap`, or
   `UIParent` with the frame under the mouse (`GetMouseFoci`/`GetMouseFocus`) being

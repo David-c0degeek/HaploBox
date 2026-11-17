@@ -15,6 +15,8 @@ test("every saved setting appears exactly once in the settings window", function
 	for key, default in pairs(HB.DEFAULTS) do
 		if key == "sounds" then
 			for s in pairs(default) do eq(seen["sound:" .. s], 1, "sound " .. s) end
+		elseif key:match("^node") and not HB.NODES_ON then
+			eq(seen[key], nil, "nodes module off: " .. key .. " hidden")
 		elseif not INTERNAL[key] then
 			eq(seen[key], 1, "setting " .. key)
 		end

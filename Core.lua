@@ -22,6 +22,10 @@ HB.ValidRole = validRole
 -- Sound values: a SOUNDKIT name ("RAID_WARNING"), a sound kit id (8959),
 -- a file id ("file:567397") or a file path ("Interface\\AddOns\\HaploBox\\Sounds\\x.ogg").
 -- false or "" turns the sound off.
+-- Gathering nodes on the leader's minimap (Nodes.lua, #5): off for now (owner,
+-- 2026-11-17). Off, Nodes.lua stops at load: no events, reports, markers or settings.
+HB.NODES_ON = false
+
 local DEFAULTS = {
 	sounds = {
 		followOn     = "IG_QUEST_LIST_OPEN",
@@ -1939,7 +1943,9 @@ local function help()
 	print_("  /hb accept - accept the team offered by a new leader (or click Accept in the popup)")
 	print_("  /hb lead - take over as leader; the team keeps its order and roles")
 	print_("  /hb controls - what the Follow leader, Assist leader and Follow healer keys do now")
-	print_("  /hb nodes [clear] - gathering nodes the followers found (not yet checked in the game)")
+	if HB.NODES_ON then
+		print_("  /hb nodes [clear] - gathering nodes the followers found (not yet checked in the game)")
+	end
 	print_("  /hb cast [on|off] - /click HaploBoxAssist <spell> and /click HaploBoxHelp <spell> cast for the leader (not yet checked in the game)")
 	print_("  /hb team - on the leader, in a party: make this group the team and send it to every toon")
 	print_("  /hb team show - list the team")
@@ -1977,7 +1983,7 @@ SlashCmdList.HAPLOBOX = function(input)
 	elseif cmd == "cast" then
 		HB.CastCommand(rest)
 	elseif cmd == "nodes" then
-		HB.NodesCommand(rest)
+		if HB.NodesCommand then HB.NodesCommand(rest) else print_("gathering nodes are turned off in this version") end
 	elseif cmd == "role" then
 		HB.SetMyRole(rest:lower())
 	elseif cmd == "team" then

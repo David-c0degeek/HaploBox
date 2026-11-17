@@ -14,6 +14,7 @@
 -- marker "seen by <toon> <n> min ago" until it expires or someone gathers there. A
 -- marker never claims that the node is there now; a missing report proves nothing.
 local HB = HaploBox
+if not HB.NODES_ON then return end  -- the module is off for now (see Core.lua)
 
 local MERGE = 0.003      -- map units: reports this close together are the same node
 -- "?" markers (owner limits after seeing them in the game): wider merge, short life,

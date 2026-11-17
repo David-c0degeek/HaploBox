@@ -120,6 +120,10 @@ local SECTIONS = {
 		{ "debug", "toggle", "Debug messages in chat (ignored addon messages, failed sends)" },
 	} },
 }
+-- the Gathering section only while the nodes module is on
+if not HB.NODES_ON then
+	for i = #SECTIONS, 1, -1 do if SECTIONS[i].id == "nodes" then table.remove(SECTIONS, i) end end
+end
 HB.SETTINGS = SECTIONS
 
 -- the quick settings popup: display settings of the team frame on this account

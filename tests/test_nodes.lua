@@ -1,4 +1,7 @@
 -- Gathering nodes found by followers, shown on the leader's minimap (#5).
+-- The module is off for now; these tests turn it on and load it again.
+HB.NODES_ON = true
+reloadAddonFile("Nodes.lua")
 
 local MAP = 1429
 local function where(x, y) W.map = { id = MAP, x = x or 0.5, y = y or 0.5, w = 3000, h = 2000 } end
