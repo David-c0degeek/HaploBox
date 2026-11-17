@@ -10,7 +10,8 @@
 --
 -- Role controls: three secure buttons for key bindings, set out of combat only:
 --   HaploBoxFollowLeader   /follow <leader>
---   HaploBoxAssistLeader   /assist <leader>
+--   HaploBoxAssistLeader   assist <leader> (type "assist": also works from the player's
+--                          own macro, where a type "macro" button would be ignored)
 --   HaploBoxFollowHealer   /follow <the team's one healer> (the healer follows the leader)
 -- They do nothing solo, in a raid, in a group with someone outside the team, and
 -- before the group is confirmed. HaploBox never presses them.
@@ -109,14 +110,16 @@ end
 -- ---------------------------------------------------------------- role controls
 local CONTROLS = {
 	{ key = "followLeader", button = "HaploBoxFollowLeader", verb = "/follow", label = "Follow leader" },
-	{ key = "assistLeader", button = "HaploBoxAssistLeader", verb = "/assist", label = "Assist leader" },
+	{ key = "assistLeader", button = "HaploBoxAssistLeader", verb = "/assist", label = "Assist leader", action = "assist" },
 	{ key = "followHealer", button = "HaploBoxFollowHealer", verb = "/follow", label = "Follow healer" },
 }
 local buttons, applied, pending = {}, {}, false
 for _, c in ipairs(CONTROLS) do
 	local b = CreateFrame("Button", c.button, UIParent, "SecureActionButtonTemplate")
-	b:RegisterForClicks("AnyUp")
-	b:Hide()  -- only reached through its key binding
+	b:RegisterForClicks("AnyUp", "AnyDown")
+	-- act once, on the up edge: a key binding sends both edges, /click only an up one
+	b:SetAttribute("useOnKeyDown", false)
+	b:Hide()  -- reached through its key binding, or /click in the player's own macro
 	buttons[c.key] = b
 end
 
@@ -194,11 +197,16 @@ function HB.UpdateRoleControls()
 	local want = HB.ResolveRoleControls()
 	for _, c in ipairs(CONTROLS) do
 		local w, b = want[c.key], buttons[c.key]
-		if w.target then
+		if w.target and c.action then
+			b:SetAttribute("type", c.action)
+			b:SetAttribute("unit", w.target)
+			b:SetAttribute("macrotext", nil)
+		elseif w.target then
 			b:SetAttribute("type", "macro")
 			b:SetAttribute("macrotext", c.verb .. " " .. w.target)
 		else
 			b:SetAttribute("type", nil)
+			b:SetAttribute("unit", nil)
 			b:SetAttribute("macrotext", "")
 		end
 		applied[c.key] = w

@@ -99,7 +99,12 @@ test("a follower's keys follow and assist the leader by name", function()
 	W.groupRoles = { Elya = "HEALER" }
 	asToon("Nyra")
 	eq(attrs("HaploBoxFollowLeader").macrotext, "/follow Haplo", "follow leader")
-	eq(attrs("HaploBoxAssistLeader").macrotext, "/assist Haplo", "assist leader")
+	eq(attrs("HaploBoxAssistLeader").type, "assist", "assist directly, not a macro")
+	eq(attrs("HaploBoxAssistLeader").unit, "Haplo", "the leader by name")
+	eq(attrs("HaploBoxAssistLeader").macrotext, nil, "no macro text")
+	for _, n in ipairs({ "HaploBoxFollowLeader", "HaploBoxAssistLeader", "HaploBoxFollowHealer" }) do
+		eq(attrs(n).useOnKeyDown, false, n .. " acts on the up edge")
+	end
 	eq(attrs("HaploBoxFollowHealer").macrotext, "/follow Elya", "follow the healer")
 	eq(attrs("HaploBoxFollowLeader").type, "macro", "active")
 end)
@@ -129,6 +134,8 @@ test("the keys do nothing solo, in a raid, or with an outsider in the group", fu
 	W.units = {}
 	fire("GROUP_ROSTER_UPDATE") advance(1)
 	eq(attrs("HaploBoxFollowLeader").type, nil, "solo")
+	eq(attrs("HaploBoxAssistLeader").type, nil, "assist off solo")
+	eq(attrs("HaploBoxAssistLeader").unit, nil, "no stale unit")
 	party("Haplo", "Elya", "Mallory")
 	fire("GROUP_ROSTER_UPDATE") advance(1)
 	eq(attrs("HaploBoxFollowLeader").type, nil, "outsider")
@@ -144,11 +151,13 @@ test("a change in combat waits, shows it, and applies after combat", function()
 	HB.SetLeaderName("Elya")
 	advance(1)
 	eq(attrs("HaploBoxFollowLeader").macrotext, "/follow Haplo", "unchanged in combat")
+	eq(attrs("HaploBoxAssistLeader").unit, "Haplo", "assist unchanged in combat")
 	eq(HB.RoleControlsPending(), true, "pending")
 	W.combat = false
 	fire("PLAYER_REGEN_ENABLED")
 	advance(1)
 	eq(attrs("HaploBoxFollowLeader").macrotext, "/follow Elya", "applied")
+	eq(attrs("HaploBoxAssistLeader").unit, "Elya", "assist applied")
 	eq(HB.RoleControlsPending(), false, "done")
 end)
 

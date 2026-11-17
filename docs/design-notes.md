@@ -151,6 +151,14 @@ explicit key press or click on the toon that becomes the leader.
   work in that repository.
 - **Built (offline, 2026-11-17):** `Lead.lua` has the handover and the three
   role controls as described above.
+- **Assist from a macro (owner request, after the game check of #8):**
+  `HaploBoxAssistLeader` is `type = "assist"` with `unit = <leader name>`
+  (`SECURE_ACTIONS.assist` calls `AssistUnit`), so `/click HaploBoxAssistLeader`
+  works inside the player's own macro; the follow buttons stay `type = "macro"`
+  (no secure follow action; a key binding is not a nested macro). All three act
+  once, on the up edge (`useOnKeyDown = false`). Unlike HaploBoxAssist this
+  changes the player's target, and when it does nothing (solo, outsider, leader
+  without target) the macro's next line uses the player's current target.
 - Raids and teams of more than 5 wait for #2.
 
 ## #5: Gathering nodes found by followers, shown on the leader's minimap
@@ -239,7 +247,10 @@ This replaces the `/assist` candidate below, which stays for the record.
   becomes a space; no match: no type, nothing cast). Not `type` "macro": checked in
   the game, a macro started from the player's own macro is ignored (typing the
   `/click` worked, the same line in a macro did not). Without a rank the game
-  casts the highest rank. Control characters, `; [ ] / | \` and the real mouse
+  casts the highest rank. A leading `!` (`!Shoot`) reaches `CastSpellByName`
+  unchanged but, checked in the game, a second press still stops the wand: the
+  `!` only holds in a `/cast` line. For that, the player's own macro uses
+  `/click HaploBoxAssistLeader` then `/cast !Shoot` (see #4). Control characters, `; [ ] / | \` and the real mouse
   button names give an empty text. Not yet checked: that WoW Forever's `/click`
   passes any word through as the button.
 - **Damage:** `/cast [@<leader token>target,harm,nodead] <spell>`. Without a living
