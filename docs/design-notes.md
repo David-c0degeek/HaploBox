@@ -186,9 +186,17 @@ real cursor is over it. This is the author's report, not Blizzard guidance.
 
 ### Built (offline, 2026-11-17): `Nodes.lua`
 
-- **hover:** a read-only hook on `GameTooltip` (OnShow and SetText) while its owner
-  is `Minimap`. Only known node names count: an English Classic Era list, plus
-  names the player gathered (`nodeNames`, at most 200).
+- **hover:** a read-only hook on `GameTooltip` (OnShow, SetText, and OnUpdate every
+  0.2 s, since WoW Forever changes the shown text natively). Owner `Minimap`, or
+  `UIParent` with the frame under the mouse (`GetMouseFoci`/`GetMouseFocus`) being
+  the minimap or a pin on it; without that API the minimap circle decides. Only
+  known node names count: an English Classic Era list, plus names the player
+  gathered (`nodeNames`, at most 200). Secret text is never read: in the game WoW
+  Forever's minimap tooltip text is secret, so minimap hovers do not work there.
+- **world:** the same tooltip with the world under the mouse (nil focus or
+  `WorldFrame`) reports the player's own position with source `w`, each name at
+  most every 30 s. The leader's pin says "near here: where <toon> stood"; an exact
+  sighting merged into it makes it exact.
 - **gather:** `UNIT_SPELLCAST_SENT` stores the cast GUID and target name for Herb
   Gathering or Mining. Only `UNIT_SPELLCAST_SUCCEEDED` with the same GUID reports
   and learns. A failed or interrupted cast with that GUID, or a new cast, clears it.

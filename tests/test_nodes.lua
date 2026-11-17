@@ -409,24 +409,73 @@ test("a minimap tooltip whose text changes natively is read while shown", functi
 	assert(reports()[1].msg:find("|Peacebloom$"), reports()[1].msg)
 end)
 
-test("the frame under the mouse decides: the world and other frames do not count", function()
+test("a node hovered in the world is reported where the player stands; other frames do not count", function()
 	asFollower({ debug = true })
+	where(0.4, 0.6)
 	GetMouseFoci = function() return { WorldFrame } end
-	hoverMinimap("Earthroot", 30, 0, "UIParent")
-	GetMouseFoci = function() return {} end   -- an answer: nothing under the mouse
-	hoverMinimap("Silverleaf", 30, 0, "UIParent")
+	hoverMinimap("Earthroot", 300, -200, "UIParent")   -- far from the minimap: the world
+	GetMouseFoci = function() return {} end              -- nothing under the mouse: the world too
+	hoverMinimap("Silverleaf", 500, 0, "UIParent")
+	advance(3)
+	local r = reports()
+	eq(#r, 2, "both")
+	assert(r[1].msg:find("^N|h|" .. MAP .. "|4000|6000|w|%d+|Earthroot$"), r[1].msg)
+	assert(r[2].msg:find("|w|%d+|Silverleaf$"), r[2].msg)
 	local bag = CreateFrame("Frame", "ContainerFrame1")
 	GetMouseFoci = function() return { bag } end
 	hoverMinimap("Peacebloom", 30, 0, "UIParent")
-	advance(3)
-	eq(#reports(), 0, "nothing")
-	eq(printedMatching("the mouse is on the world, not the minimap %(Earthroot%)"), 1, "world said")
+	advance(2)
+	eq(#reports(), 2, "another frame: nothing")
 	eq(printedMatching("over another frame %(ContainerFrame1%) %(Peacebloom%)"), 1, "other frame said")
-	local pin = CreateFrame("Frame", nil, Minimap)  -- a pin on the minimap counts
+	local pin = CreateFrame("Frame", nil, Minimap)  -- a pin on the minimap counts as the minimap
 	GetMouseFoci = function() return { pin } end
 	hoverMinimap("Peacebloom", 30, 0, "UIParent")
 	advance(2)
-	eq(#reports(), 1, "pin on the minimap")
+	eq(#reports(), 3, "pin on the minimap")
+	assert(reports()[3].msg:find("|h|%d+|Peacebloom$"), "an exact minimap sighting")
+end)
+
+test("walking while hovering one node in the world leaves no trail", function()
+	asFollower({ debug = true })
+	GetMouseFoci = function() return { WorldFrame } end
+	for step = 0, 20 do
+		where(0.5 + step * 0.002, 0.5)   -- farther than the leader's merge distance each few steps
+		nativeHover("Earthroot", 0, 0, 1)
+	end
+	advance(3)
+	eq(#reports(), 1, "one report within 30 seconds")
+	assert(printedMatching("hovered in the world again within 30 seconds") >= 1, "said")
+	advance(10)
+	where(0.6, 0.5)
+	nativeHover("Earthroot", 0, 0, 1.5)
+	advance(3)
+	eq(#reports(), 2, "again after the cooldown")
+end)
+
+test("a secret tooltip is never read; on the minimap debug says so", function()
+	asFollower({ debug = true })
+	local secretText = "Peacebloom"
+	W.secrets = { [secretText] = true }
+	GetMouseFoci = function() return { Minimap } end
+	hoverMinimap(secretText, 30, 0, "UIParent")
+	GetMouseFoci = function() return { WorldFrame } end
+	hoverMinimap(secretText, 300, 0, "UIParent")
+	nativeHover(secretText, 30, 0, 1)
+	advance(3)
+	eq(#reports(), 0, "nothing")
+	eq(printedMatching("minimap tooltip is secret on this client"), 1, "said once, for the minimap only")
+end)
+
+test("the leader marks world sightings as near, until an exact one merges in", function()
+	asLeader()
+	addon("Elya", N("h", 5000, 5000, "w", 0, "Earthroot"), "WHISPER")
+	local m = HB.NodeMarkers()[1]
+	eq(m.src, "w", "approximate")
+	addon("Nyra", N("h", 5010, 5000, "h", 0, "Earthroot"), "WHISPER")
+	eq(#HB.NodeMarkers(), 1, "merged")
+	eq(HB.NodeMarkers()[1].src, "h", "exact now")
+	addon("Elya", N("h", 5005, 5000, "w", 0, "Earthroot"), "WHISPER")
+	eq(HB.NodeMarkers()[1].src, "h", "stays exact")
 end)
 
 test("a missing, failing or odd focus API falls back to the minimap circle", function()
@@ -446,10 +495,11 @@ end)
 
 test("the same tooltip becomes valid when the mouse moves onto the minimap; reading is throttled", function()
 	asFollower()
-	GetMouseFoci = function() return { WorldFrame } end
+	local bag = CreateFrame("Frame", "ContainerFrame1")
+	GetMouseFoci = function() return { bag } end
 	local runs = nativeHover("Earthroot", 30, 0, 2)
 	advance(1)
-	eq(#reports(), 0, "world: nothing")
+	eq(#reports(), 0, "another frame: nothing")
 	GetMouseFoci = function() return { Minimap } end
 	nativeHover("Earthroot", 30, 0, 1.5)
 	advance(2)

@@ -2,10 +2,13 @@
 -- Not yet checked in the game: the minimap tooltip text, the zoom table and the
 -- position maths are all "verify" items in docs/design-notes.md.
 --
--- Only two observations count, both made by the player on a follower:
+-- Only these observations count, all made by the player on a follower:
 --   * hover:  the player moves the mouse over a node on the minimap and the game's
 --             own tooltip names it. HaploBox only reads that tooltip; it never moves
---             the cursor, scans the minimap or reads pixels or memory.
+--             the cursor, scans the minimap or reads pixels or memory. WoW Forever
+--             marks that tooltip's text secret, so there it cannot be read.
+--   * world:  the player moves the mouse over a node in the world and the game's
+--             tooltip names it; marked where the player stood, so approximate.
 --   * gather: the player gathers a node (Herb Gathering or Mining succeeds).
 -- A report goes as an addon whisper to the current leader only. The leader shows a
 -- marker "seen by <toon> <n> min ago" until it expires or someone gathers there. A
@@ -204,6 +207,7 @@ local function report(src, name, kind, mapID, x, y)
 		draining = true
 		drain()
 	end
+	return true
 end
 
 function HB.ClearNodeQueue() wipe(queue) end
@@ -283,6 +287,24 @@ local function frameName(f)
 	return ok and type(n) == "string" and n or "a frame"
 end
 
+-- A node hovered in the world: reported at the player's own position, and each
+-- name at most every 30 seconds, so walking while hovering leaves no trail.
+local WORLD_COOLDOWN = 30
+local worldSent = {}
+local function worldHover(names, label)
+	if not shareTarget() then why("not sharing now (setting, group or leader)", label) return end
+	local mapID, px, py = playerPos()
+	if not mapID then why("no map position here", label) return end
+	local t = GetTime()
+	for _, e in ipairs(names) do
+		if worldSent[e[1]] and t - worldSent[e[1]] < WORLD_COOLDOWN then
+			why("hovered in the world again within 30 seconds", label)
+		elseif report("w", e[1], e[2], mapID, px, py) then
+			worldSent[e[1]] = t
+		end
+	end
+end
+
 local function onTooltip()
 	if not (GameTooltip and Minimap) then return end
 	local owner = GameTooltip:GetOwner()
@@ -291,7 +313,16 @@ local function onTooltip()
 	local fromMinimap = owner == Minimap
 	if not fromMinimap and owner ~= nil and owner ~= UIParent then return end
 	local line = GameTooltipTextLeft1 and GameTooltipTextLeft1:GetText()
-	if type(line) ~= "string" or HB.secret(line) then return end
+	if line == nil then return end
+	if HB.secret(line) then
+		-- never matched, cached or joined: only said when the mouse is on the minimap
+		local status, focus = mouseFocus()
+		if fromMinimap or (status and onMinimapFrame(focus)) then
+			why("the minimap tooltip is secret on this client: hover nodes in the world instead")
+		end
+		return
+	end
+	if type(line) ~= "string" then return end
 	local names = knownNames(line)
 	if #names == 0 then
 		-- a UIParent tooltip without a node name is any other tooltip: say nothing
@@ -300,22 +331,19 @@ local function onTooltip()
 	end
 	local label = " (" .. names[1][1] .. ")"
 	if not fromMinimap then
+		-- the frame under the mouse, where the client can tell: a node in the world
+		-- (reported where the player stands), the minimap or a pin on it, or neither
+		local status, focus = mouseFocus()
+		if status and (focus == nil or focus == WorldFrame) then worldHover(names, label) return end
+		if status and not onMinimapFrame(focus) then
+			why("the mouse is over another frame", " (" .. frameName(focus) .. ")" .. label)
+			return
+		end
 		-- WoW Forever's Minimap:IsMouseOver() answers false even with the cursor on
 		-- the minimap, so it is not asked: the visible round minimap under the cursor
 		-- decides (the circle check below)
 		local ok, visible = pcall(Minimap.IsVisible, Minimap)
 		if not (ok and visible) then why("the minimap is hidden", label) return end
-		-- the frame under the mouse, where the client can tell: the minimap or a
-		-- pin on it, not the world (a herb hovered in the world shows the same tooltip)
-		local status, focus = mouseFocus()
-		if status and not onMinimapFrame(focus) then
-			if focus == nil or focus == WorldFrame then
-				why("the mouse is on the world, not the minimap", label)
-			else
-				why("the mouse is over another frame", " (" .. frameName(focus) .. ")" .. label)
-			end
-			return
-		end
 	end
 	if not GetCursorPosition then why("no cursor position", label) return end
 	local cx, cy = GetCursorPosition()
@@ -424,7 +452,7 @@ function HB.OnNodeReport(sender, msg)
 	if #msg > 120 then drop("too long") return end
 	if not HB.IAmLeader() then drop("I am not the leader") return end
 	if not HB.InGroup(sender) then drop("not in my group") return end
-	local kind, mapID, x, y, src, t, name = msg:match("^N|([ho])|(%d+)|(%d+)|(%d+)|([hg])|(%d+)|([^|\r\n]+)$")
+	local kind, mapID, x, y, src, t, name = msg:match("^N|([ho])|(%d+)|(%d+)|(%d+)|([hgw])|(%d+)|([^|\r\n]+)$")
 	if not kind or not validName(name) then HB.debug("node report from " .. sender .. " ignored: bad format") return end
 	mapID, x, y, t = tonumber(mapID), tonumber(x), tonumber(y), tonumber(t)
 	if mapID < 1 or mapID > 100000 or x > 10000 or y > 10000 then drop("bad map or position") return end
@@ -456,6 +484,7 @@ function HB.OnNodeReport(sender, msg)
 		for _, m in ipairs(markers) do
 			if m.name == name and near(m, obs) then
 				if t > m.t then m.t, m.by = t, sender end
+				if src ~= "w" then m.src = src end  -- an exact sighting makes it exact
 				merged = true
 			end
 		end
@@ -483,8 +512,12 @@ local function pinTooltip(pin)
 	GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
 	local mins = math.max(0, math.floor((now() - m.t) / 60))
 	GameTooltip:SetText(m.name)
-	GameTooltip:AddLine("seen by " .. (m.by:gsub("%-.*$", "")) .. " "
+	local who = (m.by:gsub("%-.*$", ""))
+	GameTooltip:AddLine("seen by " .. who .. " "
 		.. (mins == 0 and "just now" or (mins .. " min ago")) .. ", may be gone", 0.8, 0.8, 0.8)
+	if m.src == "w" then
+		GameTooltip:AddLine("near here: where " .. who .. " stood, not the node itself", 0.8, 0.8, 0.8)
+	end
 	GameTooltip:Show()
 end
 
