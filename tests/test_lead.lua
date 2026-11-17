@@ -342,3 +342,38 @@ test("a new party leader runs the loot check", function()
 	advance(3)
 	eq(W.loot, 0, "the crown arrived: free for all in a team-only party")
 end)
+
+test("in combat the crown waits for the end of combat, once, for the newest handover only", function()
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	W.combat = true
+	handover("Nyra")
+	eq(HaploBoxTeam.leader, "Nyra", "the HaploBox lead moves at once")
+	eq(#W.promotes, 0, "no promotion in combat")
+	eq(printedMatching("party lead goes to .*Nyra.* when combat ends"), 1, "said")
+	handover("Elya")
+	W.combat = false
+	fire("PLAYER_REGEN_ENABLED")
+	fire("PLAYER_REGEN_ENABLED")
+	advance(3)
+	eq(#W.promotes, 1, "one promotion")
+	eq(W.promotes[1].unit, "party1", "to the newest leader, Elya")
+	eq(printedMatching("by hand"), 0, "it worked")
+end)
+
+test("pending crown is dropped when the leader changed again or the crown moved", function()
+	asToon("Haplo")
+	W.partyLeader = "Haplo"
+	W.combat = true
+	handover("Nyra")
+	W.partyLeader = "Elya"   -- the crown went elsewhere during combat
+	W.combat = false
+	fire("PLAYER_REGEN_ENABLED")
+	advance(3)
+	eq(#W.promotes, 0, "not the crown holder any more")
+	asToon("Elya")
+	W.partyLeader = "Haplo"
+	W.combat = true
+	handover("Nyra")
+	eq(printedMatching("when combat ends"), 0, "a toon without the crown says nothing")
+end)

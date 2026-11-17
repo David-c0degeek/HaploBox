@@ -156,8 +156,9 @@ explicit key press or click on the toon that becomes the leader.
   party lead calls `C_PartyInfo.PromoteToLeader(<party token>, true)` (the
   unit popup's own call); two seconds later, if the crown has not moved and no
   newer handover came, it asks the player to promote by hand. A new party
-  leader runs the loot check (`PARTY_LEADER_CHANGED`). Not yet checked: whether
-  WoW Forever allows the call without a click.
+  leader runs the loot check (`PARTY_LEADER_CHANGED`). Checked in the game: it
+  works without a click out of combat and is refused in combat, so a handover
+  accepted in combat promotes once when combat ends (the newest handover only).
 - **Lead button (owner request):** a plain (not secure) button on every team
   member that is not the leader, in a team-only party; a click runs
   `HB.TakeLead()`, also in combat. The followers' secure buttons update when

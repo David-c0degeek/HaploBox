@@ -90,9 +90,9 @@ end
 -- party member with that name. The client may refuse it (it can need a click): if
 -- the crown has not moved two seconds later, the old leader is asked to do it.
 local crownSeq = 0
-local function handCrown(sender)
-	crownSeq = crownSeq + 1  -- a newer handover makes an older check obsolete
-	local seq = crownSeq
+local pendingCrown = nil  -- { seq, sender }: a handover accepted in combat
+
+local function crownToken(sender)
 	if not (UnitIsGroupLeader and UnitIsGroupLeader("player")) then return end
 	if IsInRaid() or HB.GroupStatus() ~= "team" then return end
 	local key, token = HB.Norm(sender), nil
@@ -103,7 +103,11 @@ local function handCrown(sender)
 			token = u
 		end
 	end
-	if not token then return end
+	return token
+end
+
+local function promoteNow(sender, token, seq)
+	local key = HB.Norm(sender)
 	local promote = (C_PartyInfo and C_PartyInfo.PromoteToLeader) or PromoteToLeader
 	if type(promote) == "function" then pcall(promote, token, true) end
 	C_Timer.After(2, function()
@@ -116,6 +120,32 @@ local function handCrown(sender)
 			.. "|r by hand: right-click its portrait, Promote to Party Leader")
 	end)
 end
+
+-- The game refuses to pass the party lead in combat (checked in the game), so a
+-- handover accepted in combat passes it when combat ends.
+local function handCrown(sender)
+	crownSeq = crownSeq + 1  -- a newer handover makes older checks and pending work obsolete
+	pendingCrown = nil
+	local seq = crownSeq
+	local token = crownToken(sender)
+	if not token then return end
+	if InCombatLockdown() then
+		pendingCrown = { seq = seq, sender = sender }
+		HB.print("the party lead goes to |cffffff00" .. sender:gsub("%-.*$", "") .. "|r when combat ends")
+		return
+	end
+	promoteNow(sender, token, seq)
+end
+
+local crownEv = CreateFrame("Frame")
+crownEv:SetScript("OnEvent", function()
+	local p = pendingCrown
+	pendingCrown = nil
+	if not p or p.seq ~= crownSeq or not HB.IsLeaderName(p.sender) then return end
+	local token = crownToken(p.sender)
+	if token then promoteNow(p.sender, token, p.seq) end
+end)
+pcall(crownEv.RegisterEvent, crownEv, "PLAYER_REGEN_ENABLED")
 HB.HandCrown = handCrown
 
 function HB.OnHandover(sender, msg)
