@@ -234,8 +234,12 @@ This replaces the `/assist` candidate below, which stays for the record.
 - **Buttons:** `HaploBoxAssist` (damage) and `HaploBoxHelp` (heals, HoTs, buffs).
   The player's own macro is `/click HaploBoxAssist Frostbolt`: `/click` passes the
   second word as the mouse button, and a `SecureHandlerWrapScript` pre-click
-  snippet (it runs before the button's own click) builds the macro text from it
-  (`_` becomes a space). Control characters, `; [ ] / | \` and the real mouse
+  snippet (it runs before the button's own click) evaluates the conditions below
+  with `SecureCmdOptionParse` and sets `type` "spell", `spell` and `unit` (`_`
+  becomes a space; no match: no type, nothing cast). Not `type` "macro": checked in
+  the game, a macro started from the player's own macro is ignored (typing the
+  `/click` worked, the same line in a macro did not). Without a rank the game
+  casts the highest rank. Control characters, `; [ ] / | \` and the real mouse
   button names give an empty text. Not yet checked: that WoW Forever's `/click`
   passes any word through as the button.
 - **Damage:** `/cast [@<leader token>target,harm,nodead] <spell>`. Without a living

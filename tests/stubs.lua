@@ -282,13 +282,43 @@ function SecureHandlerWrapScript(frame, script, header, pre)
 	frame.wraps = frame.wraps or {}
 	frame.wraps[script] = pre
 end
--- /click <name> <button>: the wrap first, then the button's action
+-- SecureCmdOptionParse for the clauses HaploBox uses: @unit, harm, help, nodead,
+-- mod:shift and an empty clause. W.hostile[unit] marks enemies, W.dead[unit] the
+-- dead, W.shift a held Shift; a unit exists when it is a party token, "player", a
+-- member's name, or "<token>target" with W.targets[token] set.
+local function unitExists(u)
+	if u == "player" or (W.units or {})[u] then return true end
+	for _, n in pairs(W.units or {}) do if n == u then return true end end
+	local tok = u:match("^(.-)target$")
+	return tok ~= nil and (W.targets or {})[tok] ~= nil
+end
+function SecureCmdOptionParse(msg)
+	local conds, action = msg:match("^(.-)%s*([^%]]-)$")
+	for clause in conds:gmatch("%[(.-)%]") do
+		local unit, ok = nil, true
+		for c in (clause .. ","):gmatch("([^,]*),") do
+			c = c:match("^%s*(.-)%s*$")
+			if c:sub(1, 1) == "@" then unit = c:sub(2)
+			elseif c == "harm" then ok = ok and unit ~= nil and unitExists(unit) and (W.hostile or {})[unit] == true
+			elseif c == "help" then ok = ok and unit ~= nil and unitExists(unit) and not (W.hostile or {})[unit]
+			elseif c == "nodead" then ok = ok and not (W.dead or {})[unit or "target"]
+			elseif c == "mod:shift" then ok = ok and W.shift == true
+			elseif c ~= "" then error("clause not modelled: " .. c) end
+		end
+		if ok then return action, unit end
+	end
+	return nil
+end
+-- /click <name> <button>: the wrap first, then the button's action. Returns what
+-- would be cast: "spell@unit" ("@" alone: the normal target), or nil for nothing.
 function clickButton(name, button)
 	local b = _G[name]
 	if b.wraps and b.wraps.OnClick then
 		runSnippet(b, "local self, button, down = ... " .. b.wraps.OnClick, button or "LeftButton", false)
 	end
-	return b.attrs and b.attrs.macrotext
+	local a = b.attrs or {}
+	if a.type ~= "spell" then return nil end
+	return a.spell .. "@" .. (a.unit or "")
 end
 function SecureHandlerSetFrameRef(f, k, other)
 	f.attrs = f.attrs or {}

@@ -4,20 +4,23 @@
 --   /click HaploBoxAssist Frostbolt        damage
 --   /click HaploBoxHelp Flash_Heal         heals, HoTs, buffs ("_" stands for a space)
 -- /click passes the second word as the mouse button; a secure pre-click snippet
--- turns it into the macro text, so HaploBox never edits macros, never presses a
+-- turns it into a spell cast, so HaploBox never edits macros, never presses a
 -- button and needs no list of spells. Spell names are read as typed (any language);
 -- control characters and ; [ ] / | \ are refused, and so are the real mouse button
 -- names (a key binding click without a spell does nothing).
---   Assist, active:   /cast [@<leader's party token>target,harm,nodead] <spell>
---   Assist, inactive: /cast <spell>
---   Help, active:     /cast [mod:shift,@player][@<leader>,help,nodead][] <spell>
---   Help, inactive:   /cast [mod:shift,@player][] <spell>
+-- The snippet evaluates the conditions below with SecureCmdOptionParse at click time
+-- and sets type "spell", the spell and the unit; no match casts nothing. It is not a
+-- type "macro" button: a macro started from inside the player's macro is ignored.
+--   Assist, active:   [@<leader's party token>target,harm,nodead]
+--   Assist, inactive: []                      (your own target, as a plain cast)
+--   Help, active:     [mod:shift,@player][@<leader>,help,nodead][]
+--   Help, inactive:   [mod:shift,@player][]
 -- No mouseover anywhere (owner decision). Active means: this toon is a follower in a
 -- party of only the accepted team, the leader is in it, and the player turned it on
 -- (/hb cast on, saved; someone outside the team joining turns it off again).
 --
 -- Assist uses a party token, which can move to someone else in combat. So once
--- armed, it is disarmed (its prefix and any built text emptied: a click does
+-- armed, it is disarmed (its conditions and any built cast emptied: a click does
 -- nothing) by secure code the moment the group changes in any way, also in combat:
 --   * a group header that lists only the leader runs DISARM on every roster or name
 --     update (refreshUnitChange), and when the leader's row loses its unit;
@@ -32,10 +35,8 @@ local function newButton(name)
 	local b = CreateFrame("Button", name, UIParent, "SecureActionButtonTemplate")
 	b:RegisterForClicks("AnyUp", "AnyDown")
 	b:Hide()  -- reached with /click from the player's macro
-	b:SetAttribute("type", "macro")
 	-- /click gives no "down" edge: act on the up click whatever ActionButtonUseKeyDown says
 	b:SetAttribute("useOnKeyDown", false)
-	b:SetAttribute("macrotext", "")
 	b:SetAttribute("hb-prefix", "")
 	return b
 end
@@ -46,7 +47,9 @@ local DISARM = [[
 local b = self:GetFrameRef("assist")
 if b and b:GetAttribute("hb-armed") then
 	b:SetAttribute("hb-prefix", "")
-	b:SetAttribute("macrotext", "")
+	b:SetAttribute("type", nil)
+	b:SetAttribute("spell", nil)
+	b:SetAttribute("unit", nil)
 	b:SetAttribute("hb-armed", nil)
 end
 ]]
@@ -60,10 +63,18 @@ local ok = type(spell) == "string" and strlen(spell) >= 1 and strlen(spell) <= 6
 	and spell ~= "LeftButton" and spell ~= "RightButton" and spell ~= "MiddleButton"
 	and spell ~= "Button4" and spell ~= "Button5"
 local prefix = self:GetAttribute("hb-prefix") or ""
+local action, target
 if ok and prefix ~= "" then
-	self:SetAttribute("macrotext", prefix .. gsub(spell, "_", " "))
+	action, target = SecureCmdOptionParse(prefix .. " " .. gsub(spell, "_", " "))
+end
+if action and action ~= "" then
+	self:SetAttribute("type", "spell")
+	self:SetAttribute("spell", action)
+	self:SetAttribute("unit", target)
 else
-	self:SetAttribute("macrotext", "")
+	self:SetAttribute("type", nil)
+	self:SetAttribute("spell", nil)
+	self:SetAttribute("unit", nil)
 end
 ]==]
 HB.CAST_BUILD = BUILD
@@ -182,7 +193,7 @@ function HB.UpdateCastButtons()
 		end
 		for _, b in ipairs({ assistBtn, helpBtn }) do
 			b:SetAttribute("hb-prefix", "")
-			b:SetAttribute("macrotext", "")
+			b:SetAttribute("type", nil)
 		end
 		showState()
 		return
@@ -193,18 +204,18 @@ function HB.UpdateCastButtons()
 	if leaderHeader then leaderHeader:SetAttribute("nameList", harm and HB.HeaderName(leader) or "") end
 	local assist, armed
 	if harm then
-		assist, armed = "/cast [@" .. token .. "target,harm,nodead] ", true
+		assist, armed = "[@" .. token .. "target,harm,nodead]", true
 	elseif active then
 		assist = ""  -- assisted, but no secure disarm here: do nothing rather than cast at your own target
 	else
-		assist = "/cast "
+		assist = "[]"
 	end
 	assistBtn:SetAttribute("hb-prefix", assist)
 	assistBtn:SetAttribute("hb-armed", armed)
-	assistBtn:SetAttribute("macrotext", "")
-	helpBtn:SetAttribute("hb-prefix", active and ("/cast [mod:shift,@player][@" .. leader .. ",help,nodead][] ")
-		or "/cast [mod:shift,@player][] ")
-	helpBtn:SetAttribute("macrotext", "")
+	assistBtn:SetAttribute("type", nil)
+	helpBtn:SetAttribute("hb-prefix", active and ("[mod:shift,@player][@" .. leader .. ",help,nodead][]")
+		or "[mod:shift,@player][]")
+	helpBtn:SetAttribute("type", nil)
 	showState()
 end
 
