@@ -898,15 +898,30 @@ local function setStats(name, s)
 end
 
 local function onStats(sender, ...)
+	if not inGroup(sender) then return end  -- a team member, and in my group
 	local v, s = { ... }, {}
 	for i, k in ipairs(STAT_FIELDS) do s[k] = tonumber(v[i]) end
 	setStats(sender, s)
 end
 
 local statsPending, lastStatsMsg = false, nil
+-- Stats go to the whole group only while it is just the team. With anyone else in
+-- it, or while that is not certain yet, a follower sends them to the leader alone
+-- and the leader sends none. Each queued copy is checked again when it goes out.
 local function sendStats()
 	lastStatsMsg = statsMsg(myStats())
-	send(lastStatsMsg, "S")
+	if not IsInGroup() then return end
+	if HB.GroupStatus() == "team" then
+		enqueue(lastStatsMsg, nil, "S", nil, nil, function() return HB.GroupStatus() == "team" end)
+		return
+	end
+	if HB.IAmLeader() then return end
+	local leader = HB.Leader()
+	if not leader or not inGroup(leader) then return end
+	enqueue(lastStatsMsg, leader, "S>" .. HB.Norm(leader), nil, nil, function()
+		return HB.GroupStatus() ~= "team" and HB.Norm(HB.Leader() or "") == HB.Norm(leader) and inGroup(leader)
+			and not HB.IAmLeader()
+	end)
 end
 local function updateMyStats()
 	setStats(HB.UnitIdent("player"), myStats())
@@ -1478,7 +1493,7 @@ local POLICY = {
 	P = "leader", D = "leader", W = "team", Y = "leader", K = "team",
 	U = "leader", A = "team", Q = "leader", B = "team", H = "team", N = "team",
 }
-local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true, N = true }
+local WHISPER_KINDS = { W = true, Y = true, K = true, U = true, A = true, B = true, N = true, S = true }
 local WHISPER_ONLY = { U = true, A = true, B = true, N = true }  -- shared UI settings: never on a group channel
 local GROUP_CHANNELS = { PARTY = true, RAID = true, INSTANCE_CHAT = true }
 

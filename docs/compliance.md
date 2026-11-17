@@ -66,7 +66,8 @@ Mixed group: what changes when someone outside the team is in the group.
 | Follow flights | Leader takes a flight (`P`) | `TakeTaxiNode` on the follower, once its flight map is open | Leader's flight; follower opens its map | Only from the stored leader | Owner decision: kept |
 | Release / Rezz team | Leader clicks the buttons (`D`) | `RepopMe`, `AcceptResurrect`, `RetrieveCorpse` on the follower | Leader's click | Only from the stored leader | Owner decision: kept |
 | Team offer / sync | `/hb team`, Send team, options button | Team list on every toon | Leader's click; followers accept a new leader in a popup | New members need a confirmation popup on the leader | Changed for #7 |
-| Follow, focus, stats, errors | Local events | Group addon messages | None | Outsiders' messages ignored; outsiders with addon tools can read them | Kept; see privacy |
+| Follow, focus, errors | Local events | Group addon messages | None | Outsiders' messages ignored; outsiders with addon tools can read them | Kept; see privacy |
+| Stats (level, XP, gold, bags) | Local events | Group addon message in a team-only group | None | Followers whisper them to the leader only; the leader sends none; an unsure roster counts as mixed | Changed 2026-11-17 |
 | Whisper forwarding | Whisper from outside the team | Addon whisper to the leader | Stranger whispers | Not affected (addon whisper, never the group) | Kept |
 | Reply relay | Leader replies (`Y`) | Chat whisper from the follower to the stranger | Leader types the reply | Only from the stored leader | Kept; chat, not gameplay |
 | HoTs, required buffs, aura windows | Unit aura events, 1 s timer | Display only | None | Game data about group members | Display only; restricted data shows unknown |
@@ -116,11 +117,16 @@ issues stay open until then. UI-only work (#6, #9 to #14) does not depend on the
 
 ## Privacy in mixed groups
 
-Group addon messages (follow state, focus target, level, gold, bag space, cast
-errors, flight destinations) go to the party channel. Outsiders cannot control a
-toon with them, but anyone with an addon that listens to the HaploBox prefix can
-read them. Whispers and replies already go by addon whisper only. Open question:
-send stats only to the leader by addon whisper when the group is mixed.
+Group addon messages (follow state, focus target, cast errors, flight
+destinations) go to the party channel. Outsiders cannot control a toon with them,
+but anyone with an addon that listens to the HaploBox prefix can read them.
+Whispers and replies already go by addon whisper only.
+
+Stats (level, XP, gold, bag space): decided 2026-11-17. While someone outside the
+team is in the group, or the roster is not certain yet, a follower sends them to
+the leader alone by addon whisper and the leader sends none. A copy that waits in
+the send queue is checked again when it goes out, so a change of group or leader
+drops it. The leader accepts stats only from team members in its group.
 
 ## Tests
 

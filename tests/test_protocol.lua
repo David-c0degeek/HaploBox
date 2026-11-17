@@ -297,3 +297,87 @@ test("old peers' W| on the party channel still reaches the leader", function()
 	addon("Elya", "W||Bob|1|1|hello", "PARTY")
 	eq(printedMatching("Bob whispers: hello"), 1, "shown")
 end)
+
+-- ---------------------------------------------------------------- stats in mixed groups
+local function asElya(...)
+	W.me = "Elya"
+	party(...)
+	login({}, standardTeam("Haplo"))
+end
+
+local function statsNow()
+	addon("Haplo", "F|?")
+	advance(1.5)
+end
+
+test("stats go to the group while it is only the team", function()
+	asElya("Haplo", "Nyra")
+	statsNow()
+	eq(#sentMatching("^S|", "PARTY"), 1, "to the party")
+	eq(#sentMatching("^S|", "WHISPER"), 0, "no whisper")
+end)
+
+test("with an outsider in the group, a follower sends stats to the leader only", function()
+	asElya("Haplo", "Mallory")
+	statsNow()
+	eq(#sentMatching("^S|", "PARTY"), 0, "never to the party")
+	local w = sentMatching("^S|", "WHISPER")
+	eq(#w, 1, "one whisper")
+	eq(w[1].target, "Haplo", "to the leader")
+end)
+
+test("an uncertain roster counts as mixed", function()
+	asElya("Haplo", "Unknown")
+	statsNow()
+	eq(#sentMatching("^S|", "PARTY"), 0, "not to the party")
+	eq(#sentMatching("^S|", "WHISPER"), 1, "to the leader")
+end)
+
+test("the leader sends no stats in a mixed group, and none when the leader is missing", function()
+	party("Elya", "Mallory")
+	login({}, standardTeam("Haplo"))
+	addon("Elya", "F|?")
+	advance(1.5)
+	eq(#sentMatching("^S|"), 0, "leader sends none")
+	asElya("Nyra", "Mallory")  -- the leader is not in the group
+	statsNow()
+	eq(#sentMatching("^S|"), 0, "no leader to send to")
+end)
+
+test("queued stats are dropped when the route changes before they go", function()
+	asElya("Haplo", "Nyra")
+	W.sendResults = { 3, 3 }  -- hold the queue
+	addon("Haplo", "F|?")
+	advance(1.05)
+	W.units.party3 = "Mallory"  -- an outsider joins while the group copy waits
+	advance(5)
+	eq(#sentMatching("^S|", "PARTY"), 0, "group copy dropped")
+end)
+
+test("a queued whisper to the leader is dropped when the leader changes or the group becomes the team", function()
+	asElya("Haplo", "Mallory")
+	W.sendResults = { 3, 3 }
+	addon("Haplo", "F|?")
+	advance(1.05)
+	HaploBoxTeam.leader = "Nyra"
+	advance(5)
+	eq(#sentMatching("^S|", "WHISPER"), 0, "old leader gets nothing")
+	asElya("Haplo", "Mallory")
+	W.sendResults = { 3, 3 }
+	addon("Haplo", "F|?")
+	advance(1.05)
+	W.units.party2 = "Nyra"  -- the outsider leaves: the team again
+	advance(5)
+	eq(#sentMatching("^S|", "WHISPER"), 0, "whisper dropped once the group is the team")
+end)
+
+test("whispered stats count only from a team member in my group", function()
+	party("Elya", "Mallory")
+	login({}, standardTeam("Haplo"))
+	addon("Elya", "S|10|5|20|0|100|8|16", "WHISPER")
+	assert(HB.stats.elya, "Elya's stats taken")
+	addon("Mallory", "S|10|5|20|0|100|8|16", "WHISPER")
+	eq(HB.stats.mallory, nil, "outsider ignored")
+	addon("Nyra", "S|10|5|20|0|100|8|16", "WHISPER")  -- team, not in the group
+	eq(HB.stats.nyra, nil, "not in my group")
+end)
