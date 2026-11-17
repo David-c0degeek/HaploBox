@@ -312,7 +312,8 @@ This replaces the `/assist` candidate below, which stays for the record.
   - a state driver runs on any change away from a party.
   HaploBox arms the buttons again only out of combat, after checking the group.
 - **Off switch:** opt-in, saved (`castAssist`). Normal casts in solo, raid or
-  unconfirmed groups and on the leader; someone outside the team turns it off.
+  unconfirmed groups and on the leader; someone outside the team pauses it
+  (intent kept; owner request after a third toon joined before `/hb team`).
 - **verify:** that the header, `refreshUnitChange`, `_onattributechanged` and the
   state driver behave like this on Forever and Classic Era. Also verify
   `@<token>target` and `@<name>` in macro conditionals, and that `/click` reaches

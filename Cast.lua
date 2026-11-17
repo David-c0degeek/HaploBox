@@ -17,7 +17,8 @@
 --   Help, inactive:   [mod:shift,@player][]
 -- No mouseover anywhere (owner decision). Active means: this toon is a follower in a
 -- party of only the accepted team, the leader is in it, and the player turned it on
--- (/hb cast on, saved; someone outside the team joining turns it off again).
+-- (/hb cast on, saved; someone outside the team in the group pauses it: plain casts
+-- until the group is only the team again).
 --
 -- Assist uses a party token, which can move to someone else in combat. So once
 -- armed, it is disarmed (its conditions and any built cast emptied: a click does
@@ -150,8 +151,9 @@ local function context()
 end
 
 
--- A small line under the team frame while assisted casting is on or waiting.
+-- A small line under the team frame while assisted casting is on, paused or waiting.
 local note
+local paused, pausedSaid = false, false
 local function showState()
 	local frame = HaploBoxPartyFrame
 	if not frame then return end
@@ -163,6 +165,8 @@ local function showState()
 	local on = HB.db.castAssist
 	if pending then
 		text = "|cffffaa00assisted casting: " .. (on and "on" or "off") .. ", buttons update after combat|r"
+	elseif on and paused then
+		text = "|cffffaa00assisted casting: paused (someone outside the team)|r"
 	elseif on then
 		text = harmReady == false and "|cffffaa00assisted casting: heals only (damage not available here)|r"
 			or "|cff66ff66assisted casting: on|r"
@@ -173,13 +177,19 @@ end
 HB.CastStateText = function() return note and note:IsShown() and note:GetText() or nil end
 
 function HB.UpdateCastButtons()
-	-- someone outside the team joining clears the intent at once, also in combat;
-	-- solo, a raid or a group not confirmed yet only make the buttons cast normally
+	-- someone outside the team pauses it (said once per visit, also in combat); solo,
+	-- a raid or a group not confirmed yet also make the buttons cast normally. The
+	-- intent is kept, so it comes back by itself when the group is only the team again.
 	local leader, token, why, status = context()
 	if HB.db.castAssist and status == "mixed" then
-		HB.db.castAssist = false
-		HB.print("assisted casting turned off: " .. why .. " (/hb cast on to turn it on again)")
+		if not pausedSaid then
+			pausedSaid = true
+			HB.print("assisted casting paused: " .. why .. "; it comes back when the group is only your team")
+		end
+	else
+		pausedSaid = false
 	end
+	paused = HB.db.castAssist and status == "mixed" or false
 	if InCombatLockdown() then
 		pending = true
 		showState()
@@ -255,7 +265,7 @@ ev:SetScript("OnEvent", function(_, event)
 	if event == "PLAYER_LOGIN" then
 		C_Timer.After(3, HB.UpdateCastButtons)
 	else
-		HB.UpdateCastButtons()  -- at once: an outsider passing through in combat still turns it off
+		HB.UpdateCastButtons()  -- at once: an outsider passing through in combat is noticed
 		C_Timer.After(0.2, HB.UpdateCastButtons)
 	end
 end)

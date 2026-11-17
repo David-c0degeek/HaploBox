@@ -95,22 +95,53 @@ test("any group change in combat disarms damage at once, also a cast already bui
 	eq(assist("Frostbolt"), "Frostbolt@party2target", "re-armed after combat on the new token")
 end)
 
-test("an outsider joining disarms in combat and turns it off for good", function()
+test("an outsider pauses it: disarmed in combat, plain casts after, back by itself when it leaves", function()
 	setup()
 	on()
 	W.combat = true
 	W.units.party3 = "Mallory"
 	fire("GROUP_ROSTER_UPDATE")
 	eq(assist("Frostbolt"), nil, "disarmed")
-	eq(HB.AssistCastOn(), false, "intent cleared at once")
-	W.units.party3 = nil
-	fire("GROUP_ROSTER_UPDATE")
+	eq(assist("Frostbolt"), nil, "still inert on the next click")
+	eq(HB.AssistCastOn(), true, "intent kept")
 	W.combat = false
 	fire("PLAYER_REGEN_ENABLED")
 	advance(1)
+	eq(assist("Frostbolt"), "Frostbolt@", "outsider still there: plain cast, never the leader's target")
+	eq(help("Renew"), "Renew@", "help plain too")
+	assert(HB.CastStateText():find("paused"), "frame says paused")
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(printedMatching("assisted casting paused: someone outside the team"), 1, "said once per visit")
+	W.units.party3 = nil
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(assist("Frostbolt"), "Frostbolt@party1target", "back without /hb cast on")
+	eq(help("Renew"), "Renew@Haplo", "help on the leader again")
+	assert(not HB.CastStateText():find("paused"), "no longer paused")
+	W.units.party3 = "Mallory"
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(printedMatching("assisted casting paused"), 2, "a new visit says it again")
+end)
+
+test("turned off while paused stays off; nothing said when it is already off", function()
+	setup()
+	on()
+	W.units.party3 = "Mallory"
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	HB.CastCommand("off")
+	W.units.party3 = nil
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
 	eq(HB.AssistCastOn(), false, "stays off")
-	eq(assist("Frostbolt"), "Frostbolt@", "normal cast")
-	eq(printedMatching("turned off: someone outside the team"), 1, "said")
+	eq(assist("Frostbolt"), "Frostbolt@", "plain")
+	setup()
+	W.units.party3 = "Mallory"
+	fire("GROUP_ROSTER_UPDATE")
+	advance(1)
+	eq(printedMatching("paused"), 0, "off: no pause message")
 end)
 
 test("the leader leaving, or a raid, in combat disarms", function()
